@@ -6,6 +6,7 @@ import DashboardPage from './pages/DashboardPage'
 import MarginLokasiPage from './pages/MarginLokasiPage'
 import StockRebalancingPage from './pages/StockRebalancingPage'
 import ReconciliationDashboardPage from './pages/ReconciliationDashboardPage'
+import KasirPage from './pages/KasirPage'
 import ComingSoonPage from './pages/ComingSoonPage'
 import { ROLES } from './context/AuthContext'
 
@@ -29,7 +30,7 @@ export default function App() {
             path="/kasir"
             element={
               <ProtectedRoute allowedRoles={[ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV]}>
-                <ComingSoonPage title="Kasir" />
+                <KasirPage />
               </ProtectedRoute>
             }
           />
