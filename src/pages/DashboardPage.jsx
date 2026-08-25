@@ -17,9 +17,9 @@ const TONE_CLASS = {
 // otomatis cuma dapat baris lokasi mereka; Super Admin dapat semua baris,
 // jadi filter lokasi di sini murni penyaringan tambahan di sisi client
 // karena backend belum mendukung narrow-by-location di endpoint ini).
-function filterByLocation(rows, activeLocation) {
+function filterByLocation(rows, activeLocation, field = 'subCabangId') {
   if (!activeLocation) return rows
-  return rows.filter((r) => r.subCabangId === activeLocation.id)
+  return rows.filter((r) => r[field] === activeLocation.id)
 }
 
 function buildSuperAdminCards({ dashboardData, reconciliation, locationCount, activeLocation }) {
@@ -56,7 +56,7 @@ function buildManagerCards({ dashboardData, reconciliation, activeLocation }) {
   const kasBelumDisetorTotal = kasBelumDisetorRows.reduce((sum, r) => sum + Number(r.saldoKas), 0)
 
   const transferMenungguCount = reconciliation
-    ? filterByLocation(reconciliation.transferMenunggu, activeLocation).length
+    ? filterByLocation(reconciliation.transferMenunggu, activeLocation, 'fromSubCabangId').length
     : null
 
   return [
