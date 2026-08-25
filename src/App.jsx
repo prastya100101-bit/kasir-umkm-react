@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import MarginLokasiPage from './pages/MarginLokasiPage'
 import StockRebalancingPage from './pages/StockRebalancingPage'
+import ReconciliationDashboardPage from './pages/ReconciliationDashboardPage'
 import ComingSoonPage from './pages/ComingSoonPage'
 import { ROLES } from './context/AuthContext'
 
@@ -55,7 +56,7 @@ export default function App() {
             path="/rekonsiliasi"
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
-                <ComingSoonPage title="Dashboard Rekonsiliasi" />
+                <ReconciliationDashboardPage />
               </ProtectedRoute>
             }
           />
