@@ -1,0 +1,111 @@
+import apiClient from './client'
+import { fetchProducts } from './masterData'
+
+// ============================================================
+// PENYESUAIAN STOK — controllers/stockController.js, mount '/api/stok/penyesuaian'
+// create/list boleh semua role login (verifyToken saja, lihat stockRoutes.js).
+// approve/reject KHUSUS Super Admin (dicek di controller lewat
+// req.user.role.isSuperAdmin, bukan requireRole middleware — gating UI
+// harus ikut pola yang sama, lihat StockRebalancingPage.jsx).
+//
+// subCabangId WAJIB dikirim tiap create — backend TIDAK auto-isi dari
+// req.locationScope kalau body kosong (constraint di createAdjustment:
+// "id, itemType, type, qty, dan subCabangId/location wajib diisi").
+// ============================================================
+
+export async function fetchAdjustments({ status } = {}) {
+  const params = status ? { status } : {}
+  const { data } = await apiClient.get('/api/stok/penyesuaian', { params })
+  return data
+}
+
+export async function createAdjustment({ itemType, productId, rawMaterialId, type, qty, subCabangId, note }) {
+  const id = crypto.randomUUID()
+  const { data } = await apiClient.post('/api/stok/penyesuaian', {
+    id,
+    itemType,
+    productId: itemType === 'product' ? productId : undefined,
+    rawMaterialId: itemType === 'raw_material' ? rawMaterialId : undefined,
+    type,
+    qty,
+    subCabangId,
+    note: note || undefined,
+  })
+  return data
+}
+
+export async function approveAdjustment(id) {
+  const { data } = await apiClient.post(`/api/stok/penyesuaian/${id}/approve`)
+  return data
+}
+
+export async function rejectAdjustment(id, rejectionReason) {
+  const { data } = await apiClient.post(`/api/stok/penyesuaian/${id}/reject`, {
+    rejectionReason: rejectionReason || undefined,
+  })
+  return data
+}
+
+// ============================================================
+// TRANSFER STOK — controllers/stockController.js, mount '/api/stok/transfer'
+// GET '/api/stok/transfer' dipakai bersama oleh StockRebalancingPage (riwayat
+// saran rebalancing) — endpoint sama, sengaja tidak dipisah di sini.
+// fromSubCabangId = lokasi asal (harus dalam scope user, ditegakkan backend
+// lewat guardLocationWrite). toSubCabangId = lokasi tujuan, TIDAK di-guard
+// (secara desain boleh lokasi lain), tapi dropdown-nya di UI dibatasi ke
+// daftar /api/locations yang memang sudah discope untuk user itu.
+// ============================================================
+
+export async function fetchTransfers({ status } = {}) {
+  const params = status ? { status } : {}
+  const { data } = await apiClient.get('/api/stok/transfer', { params })
+  return data
+}
+
+export async function createTransfer({ itemType, productId, rawMaterialId, qty, fromSubCabangId, toSubCabangId, note }) {
+  const id = crypto.randomUUID()
+  const { data } = await apiClient.post('/api/stok/transfer', {
+    id,
+    itemType,
+    productId: itemType === 'product' ? productId : undefined,
+    rawMaterialId: itemType === 'raw_material' ? rawMaterialId : undefined,
+    qty,
+    fromSubCabangId,
+    toSubCabangId,
+    note: note || undefined,
+  })
+  return data
+}
+
+export async function approveTransfer(id) {
+  const { data } = await apiClient.post(`/api/stok/transfer/${id}/approve`)
+  return data
+}
+
+export async function rejectTransfer(id, rejectionReason) {
+  const { data } = await apiClient.post(`/api/stok/transfer/${id}/reject`, {
+    rejectionReason: rejectionReason || undefined,
+  })
+  return data
+}
+
+// ============================================================
+// PENCARIAN ITEM (produk / bahan baku) untuk form Penyesuaian & Transfer.
+// Produk: pakai fetchProducts yang sudah ada di masterData.js (active-only,
+// biar tidak bisa menyesuaikan/transfer produk yang sudah dinonaktifkan).
+// Bahan baku: controllers/rawMaterialController.js, mount '/api/bahan-baku'
+// — balikan array polos (beda dari produk yang {data, pagination}), dan
+// belum ada file api terpisah untuk modul ini, jadi ditaruh di sini saja.
+// ============================================================
+
+export async function searchProductItems(search) {
+  if (!search || search.trim().length < 2) return []
+  const { data } = await fetchProducts({ search, active: true, limit: 10 })
+  return data
+}
+
+export async function searchRawMaterialItems(search) {
+  if (!search || search.trim().length < 2) return []
+  const { data } = await apiClient.get('/api/bahan-baku', { params: { search } })
+  return data.slice(0, 10)
+}

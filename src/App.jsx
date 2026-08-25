@@ -7,6 +7,7 @@ import MarginLokasiPage from './pages/MarginLokasiPage'
 import StockRebalancingPage from './pages/StockRebalancingPage'
 import ReconciliationDashboardPage from './pages/ReconciliationDashboardPage'
 import MasterDataPage from './pages/MasterDataPage'
+import StokPenuhPage from './pages/StokPenuhPage'
 import KasirPage from './pages/KasirPage'
 import ComingSoonPage from './pages/ComingSoonPage'
 import { ROLES } from './context/AuthContext'
@@ -50,6 +51,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
                 <StockRebalancingPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/stok-penuh"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW]}>
+                <StokPenuhPage />
               </ProtectedRoute>
             }
           />
