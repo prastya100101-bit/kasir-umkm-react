@@ -4,6 +4,7 @@ import ProtectedRoute from './routes/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import MarginLokasiPage from './pages/MarginLokasiPage'
+import StockRebalancingPage from './pages/StockRebalancingPage'
 import ComingSoonPage from './pages/ComingSoonPage'
 import { ROLES } from './context/AuthContext'
 
@@ -45,7 +46,7 @@ export default function App() {
             path="/stock-rebalancing"
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
-                <ComingSoonPage title="Stock Rebalancing" />
+                <StockRebalancingPage />
               </ProtectedRoute>
             }
           />
