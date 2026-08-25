@@ -637,7 +637,16 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
           <input className={inputClass} value={form.sku} onChange={(e) => set('sku', e.target.value)} />
         </Field>
         <Field label="Barcode">
-          <input className={inputClass} value={form.barcode} onChange={(e) => set('barcode', e.target.value)} />
+          <div className="flex gap-2">
+            <input className={inputClass} value={form.barcode} onChange={(e) => set('barcode', e.target.value)} />
+            <button
+              type="button"
+              onClick={() => set('barcode', String(Date.now()))}
+              className="whitespace-nowrap rounded-md border border-[var(--color-border)] px-3 py-2 text-xs font-medium text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]"
+            >
+              Buat Otomatis
+            </button>
+          </div>
         </Field>
         <Field label="Kategori">
           <select className={inputClass} value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
