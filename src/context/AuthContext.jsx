@@ -55,11 +55,25 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  // PATCH 25 Agustus 2026: database production ternyata punya 2 role dengan
+  // isSuperAdmin:true tapi nama beda ("admin" role lama vs "Super Admin" role
+  // baru dari seed.js) — user admin yang sudah ada masih terpasang ke role
+  // lama "admin". Kalau role gating cuma cocokkan nama persis "Super Admin",
+  // user ini tidak dikenali sama sekali oleh UI (dashboard blank tanpa error).
+  // Fix: ikuti sumber kebenaran yang sama seperti backend pakai untuk otorisasi
+  // (role.isSuperAdmin), bukan nama string — supaya tidak rapuh terhadap nama
+  // role yang belum distandardisasi di database.
+  const roleName = user?.role?.name ?? null
+  const effectiveRole = user?.role?.isSuperAdmin ? ROLES.SUPER_ADMIN : roleName
+
   const value = {
     user,
-    // user.role dari backend adalah OBJEK relasi { id, name, isSuperAdmin },
-    // bukan string — jadi role yang dipakai untuk gating UI adalah user.role.name.
-    role: user?.role?.name ?? null,
+    // Lihat catatan PATCH di atas — role di sini SUDAH dinormalisasi untuk
+    // Super Admin. Manager/Kasir masih bergantung pada nama role asli sampai
+    // role tersebut benar-benar distandardisasi di database (lihat roadmap
+    // poin master data: manager@kasir.local / kasir@kasir.local belum dibuat
+    // dengan role bernama tepat "Manager"/"Kasir").
+    role: effectiveRole,
     isSuperAdmin: user?.role?.isSuperAdmin ?? false,
     isAuthenticated: Boolean(user),
     isLoading,
