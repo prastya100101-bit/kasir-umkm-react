@@ -6,6 +6,7 @@ import DashboardPage from './pages/DashboardPage'
 import MarginLokasiPage from './pages/MarginLokasiPage'
 import StockRebalancingPage from './pages/StockRebalancingPage'
 import ReconciliationDashboardPage from './pages/ReconciliationDashboardPage'
+import MasterDataPage from './pages/MasterDataPage'
 import KasirPage from './pages/KasirPage'
 import ComingSoonPage from './pages/ComingSoonPage'
 import { ROLES } from './context/AuthContext'
@@ -58,6 +59,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
                 <ReconciliationDashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/master-data"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
+                <MasterDataPage />
               </ProtectedRoute>
             }
           />
