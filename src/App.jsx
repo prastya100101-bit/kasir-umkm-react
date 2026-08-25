@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './routes/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import MarginLokasiPage from './pages/MarginLokasiPage'
 import ComingSoonPage from './pages/ComingSoonPage'
 import { ROLES } from './context/AuthContext'
 
@@ -35,7 +36,7 @@ export default function App() {
             path="/margin"
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
-                <ComingSoonPage title="Margin Lokasi" />
+                <MarginLokasiPage />
               </ProtectedRoute>
             }
           />
