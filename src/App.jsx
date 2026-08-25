@@ -29,7 +29,7 @@ export default function App() {
           <Route
             path="/kasir"
             element={
-              <ProtectedRoute allowedRoles={[ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV]}>
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV]}>
                 <KasirPage />
               </ProtectedRoute>
             }

@@ -5,7 +5,7 @@ import { useAuth, ROLES } from '../../context/AuthContext'
 // dashboard 3-level artinya tiap role lihat porsi yang relevan buat dia saja.
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW] },
-  { to: '/kasir', label: 'Kasir', roles: [ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV] },
+  { to: '/kasir', label: 'Kasir', roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV] },
   { to: '/margin', label: 'Margin Lokasi', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV] },
   { to: '/stock-rebalancing', label: 'Stock Rebalancing', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV] },
   { to: '/rekonsiliasi', label: 'Rekonsiliasi', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV] },
