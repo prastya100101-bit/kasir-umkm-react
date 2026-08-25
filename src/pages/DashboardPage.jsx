@@ -110,9 +110,11 @@ export default function DashboardPage() {
     setError(null)
 
     const calls = [fetchDashboardData({ days: 1 })]
-    // /api/finance/reconciliation-dashboard menolak (403) untuk role dengan
-    // scope 1 SubCabang (Kasir) — cuma dipanggil untuk Super Admin/Manager.
-    if (role !== ROLES.KASIR) calls.push(fetchReconciliationSummary())
+    // /api/finance/reconciliation-dashboard menolak (403, lewat
+    // requireMultiLocationScope di backend) untuk role dengan scope 1
+    // SubCabang (Kasir & Crew) — cuma dipanggil untuk Super Admin/Manager/SPV.
+    const isSingleLocationRole = role === ROLES.KASIR || role === ROLES.CREW
+    if (!isSingleLocationRole) calls.push(fetchReconciliationSummary())
 
     Promise.all(calls)
       .then(([dashboard, reconciliationData]) => {
@@ -139,9 +141,9 @@ export default function DashboardPage() {
   if (dashboardData) {
     if (role === ROLES.SUPER_ADMIN) {
       cards = buildSuperAdminCards({ dashboardData, reconciliation, locationCount, activeLocation })
-    } else if (role === ROLES.MANAGER) {
+    } else if (role === ROLES.MANAGER || role === ROLES.SPV) {
       cards = buildManagerCards({ dashboardData, reconciliation, activeLocation })
-    } else if (role === ROLES.KASIR) {
+    } else if (role === ROLES.KASIR || role === ROLES.CREW) {
       cards = buildKasirCards({ dashboardData })
     }
   }

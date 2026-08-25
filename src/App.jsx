@@ -25,7 +25,7 @@ export default function App() {
           <Route
             path="/kasir"
             element={
-              <ProtectedRoute allowedRoles={[ROLES.KASIR, ROLES.MANAGER]}>
+              <ProtectedRoute allowedRoles={[ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV]}>
                 <ComingSoonPage title="Kasir" />
               </ProtectedRoute>
             }
@@ -34,7 +34,7 @@ export default function App() {
           <Route
             path="/margin"
             element={
-              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER]}>
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
                 <ComingSoonPage title="Margin Lokasi" />
               </ProtectedRoute>
             }
@@ -43,7 +43,7 @@ export default function App() {
           <Route
             path="/stock-rebalancing"
             element={
-              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER]}>
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
                 <ComingSoonPage title="Stock Rebalancing" />
               </ProtectedRoute>
             }
@@ -52,7 +52,7 @@ export default function App() {
           <Route
             path="/rekonsiliasi"
             element={
-              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER]}>
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
                 <ComingSoonPage title="Dashboard Rekonsiliasi" />
               </ProtectedRoute>
             }

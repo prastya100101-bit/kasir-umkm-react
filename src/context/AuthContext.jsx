@@ -6,13 +6,21 @@ const AuthContext = createContext(null)
 
 // Role di backend adalah relasi ke tabel Role (bukan string enum) —
 // field pentingnya: role.name dan role.isSuperAdmin.
-// Baru "Super Admin" yang sudah di-seed di database (lihat prisma/seed.js);
-// "Manager" dan "Kasir" MASIH RENCANA, belum benar-benar ada sebagai row Role
-// sampai dibuat manual. Sesuaikan nama di sini kalau nanti dibuat beda ejaan.
+// Semua 4 role non-superadmin sudah di-seed di database (lihat prisma/seed.js,
+// diperluas 25 Agustus 2026): "Manager", "SPV", "Kasir" (belum dipakai di
+// seed sekarang, dipertahankan untuk kompatibilitas), "Crew". Sesuaikan nama
+// di sini kalau nanti dibuat beda ejaan di seed.
+//
+// Tier akses (dipakai di Sidebar.jsx/App.jsx/DashboardPage.jsx): SPV
+// diperlakukan SAMA seperti MANAGER (scope lokasi level Cabang, sama persis
+// — lihat catatan di prisma/seed.js soal SPV belum multi-cabang beneran),
+// CREW diperlakukan SAMA seperti KASIR (scope 1 SubCabang).
 export const ROLES = {
   SUPER_ADMIN: 'Super Admin',
   MANAGER: 'Manager',
+  SPV: 'SPV',
   KASIR: 'Kasir',
+  CREW: 'Crew',
 }
 
 export function AuthProvider({ children }) {
