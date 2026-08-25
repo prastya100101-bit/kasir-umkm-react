@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* === Design tokens — KASIR UMKM ===
+     Palet "teal & brass": teal gelap yang tenang & terpercaya untuk struktur,
+     brass/emas hangat untuk aksen (evokes till/kasir logam), kanvas krem lembut
+     yang nyaman dipandang lama. Fraunces untuk judul (elegan, berkarakter),
+     Inter untuk isi (jernih dibaca), mono untuk angka Rupiah (kesan ledger/struk). */
+
+  --color-ink: #16211E;          /* nyaris hitam berundertone hijau-teal, lebih lembut dari hitam pekat */
+  --color-ink-soft: #5C6B66;
+  --color-canvas: #F6F5F1;       /* krem netral hangat, lebih nyaman di mata daripada putih pekat */
+  --color-surface: #FFFFFF;
+  --color-border: #E3E0D6;
+
+  --color-brand: #12333A;        /* teal gelap — tenang, terpercaya, tidak generik */
+  --color-brand-soft: #1D4750;
+  --color-brand-tint: #E7EEEE;
+
+  --color-accent: #C69C4F;       /* brass/emas hangat — aksen premium ala logam kasir */
+  --color-accent-soft: #F3E7CE;
+  --color-accent-ink: #4A3819;   /* teks di atas accent supaya kontras tetap terjaga */
+
+  --color-success: #3E7C5C;
+  --color-success-tint: #E8F1EC;
+  --color-danger: #A83E3E;
+  --color-danger-tint: #F7EAEA;
+  --color-warning: #B08A3E;
+  --color-warning-tint: #F5EEDD;
+
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-ledger: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --shadow-card: 0 1px 2px rgba(18, 51, 58, 0.04), 0 4px 12px rgba(18, 51, 58, 0.06);
+}
+
+html {
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background: var(--color-canvas);
+}
+
+/* Rupiah / angka selalu pakai font ledger dengan tabular alignment —
+   ini signature aplikasi: tiap nominal terasa seperti keluar dari struk kasir. */
+.figure {
+  font-family: var(--font-ledger);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Garis putus-putus ala tepi kertas struk yang dirobek */
+.receipt-divider {
+  border-top: 1px dashed var(--color-border);
+}
+
+/* Elevasi lembut untuk kartu — dipakai selain border, bukan gradient/neon */
+.card-elevated {
+  box-shadow: var(--shadow-card);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
