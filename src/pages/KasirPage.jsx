@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import CameraScanModal from '../components/kasir/CameraScanModal'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import { formatRupiah } from '../utils/format'
@@ -624,6 +625,7 @@ export default function KasirPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [lastSale, setLastSale] = useState(null)
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [showCameraScan, setShowCameraScan] = useState(false)
 
   useEffect(() => {
     document.title = 'Kasir — KASIR UMKM'
@@ -691,17 +693,25 @@ export default function KasirPage() {
     setCart((prev) => prev.map((i) => (i.productId === productId ? { ...i, itemDiscount: value } : i)))
   }
 
-  async function handleScanBarcode(e) {
-    e.preventDefault()
-    if (!barcodeInput.trim() || !subCabangId) return
+  async function lookupAndAddByCode(code) {
+    if (!code.trim() || !subCabangId) return
     try {
-      const product = await fetchKasirProductByBarcode(barcodeInput.trim(), subCabangId)
+      const product = await fetchKasirProductByBarcode(code.trim(), subCabangId)
       addToCart(product)
     } catch {
       // barcode tidak ketemu — diamkan saja, kasir bisa cari manual
-    } finally {
-      setBarcodeInput('')
     }
+  }
+
+  async function handleScanBarcode(e) {
+    e.preventDefault()
+    await lookupAndAddByCode(barcodeInput)
+    setBarcodeInput('')
+  }
+
+  async function handleCameraDetected(code) {
+    setShowCameraScan(false)
+    await lookupAndAddByCode(code)
   }
 
   function handleCheckoutSuccess(sale) {
@@ -794,7 +804,7 @@ export default function KasirPage() {
               placeholder="Cari produk / SKU…"
               className="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
             />
-            <form onSubmit={handleScanBarcode} className="sm:w-48">
+            <form onSubmit={handleScanBarcode} className="flex gap-2 sm:w-56">
               <input
                 type="text"
                 value={barcodeInput}
@@ -802,6 +812,14 @@ export default function KasirPage() {
                 placeholder="Scan barcode + Enter"
                 className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
               />
+              <button
+                type="button"
+                onClick={() => setShowCameraScan(true)}
+                title="Scan pakai kamera"
+                className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+              >
+                📷
+              </button>
             </form>
           </div>
 
@@ -864,6 +882,10 @@ export default function KasirPage() {
             {cartPanel}
           </div>
         </div>
+      )}
+
+      {showCameraScan && (
+        <CameraScanModal onDetected={handleCameraDetected} onClose={() => setShowCameraScan(false)} />
       )}
 
       {checkoutOpen && (
