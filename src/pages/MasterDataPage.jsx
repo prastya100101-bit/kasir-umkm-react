@@ -21,6 +21,8 @@ import {
   deleteRawMaterial,
   fetchRecipe,
   saveRecipe,
+  fetchBundle,
+  saveBundle,
   fetchCustomers,
   createCustomer,
   updateCustomer,
@@ -620,6 +622,141 @@ function RawMaterialTab({ canWrite, suppliers, rawMaterials, loading, onReload }
 }
 
 // ============================================================
+// MODAL BUNDLE PRODUK — dipakai dari tombol "Bundle" di Tab Produk.
+// Beda dari Resep (BOM bahan baku ke produk): ini produk jadi lain ke
+// produk jadi lain, mis. paket "Nasi + Es Teh" = 2 komponen produk.
+// Backend (bundleController.js) menolak bundle yang isinya dirinya
+// sendiri sebagai komponen — dropdown di sini juga sudah menyaring itu
+// duluan supaya user tidak perlu menunggu error dari server.
+// ============================================================
+function BundleModal({ product, allProducts, canWrite, onClose }) {
+  const [items, setItems] = useState([]) // [{ componentProductId, qty }]
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  const componentOptions = allProducts.filter((p) => p.id !== product.id)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    fetchBundle(product.id)
+      .then((data) => {
+        if (!active) return
+        setItems(data.map((it) => ({ componentProductId: it.componentProductId, qty: it.qty })))
+      })
+      .catch((err) => active && setError(errMsg(err, 'Gagal memuat bundle.')))
+      .finally(() => active && setLoading(false))
+    return () => {
+      active = false
+    }
+  }, [product.id])
+
+  function addRow() {
+    setItems((prev) => [...prev, { componentProductId: '', qty: '' }])
+  }
+  function updateRow(idx, field, value) {
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
+  }
+  function removeRow(idx) {
+    setItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      const clean = items
+        .filter((it) => it.componentProductId && Number(it.qty) > 0)
+        .map((it) => ({ componentProductId: it.componentProductId, qty: Number(it.qty) }))
+      await saveBundle(product.id, clean)
+      onClose()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan bundle.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`Bundle — ${product.name}`} onClose={onClose}>
+      <ErrorBanner message={error} />
+      {loading ? (
+        <p className="text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+      ) : (
+        <>
+          <p className="mb-3 text-xs text-[var(--color-ink-soft)]">
+            Produk jadi lain yang menjadi komponen paket ini, beserta jumlahnya. Beda dari Resep
+            (bahan baku) — ini isinya produk jadi lain, mis. paket "Nasi + Es Teh".
+          </p>
+          {items.length === 0 && (
+            <p className="mb-3 text-sm text-[var(--color-ink-soft)]">
+              Belum ada komponen di bundle ini — produk ini dijual apa adanya (bukan paket).
+            </p>
+          )}
+          {items.map((it, idx) => {
+            const comp = componentOptions.find((p) => p.id === it.componentProductId)
+            return (
+              <div key={idx} className="mb-2 flex items-center gap-2">
+                <select
+                  className={inputClass}
+                  value={it.componentProductId}
+                  disabled={!canWrite}
+                  onChange={(e) => updateRow(idx, 'componentProductId', e.target.value)}
+                >
+                  <option value="">— Pilih produk komponen —</option>
+                  {componentOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="Qty"
+                  className={inputClass + ' max-w-[6rem]'}
+                  value={it.qty}
+                  disabled={!canWrite}
+                  onChange={(e) => updateRow(idx, 'qty', e.target.value)}
+                />
+                <span className="w-10 shrink-0 text-xs text-[var(--color-ink-soft)]">{comp?.unit || ''}</span>
+                {canWrite && (
+                  <button type="button" onClick={() => removeRow(idx)} className="text-[var(--color-danger)] hover:underline">
+                    Hapus
+                  </button>
+                )}
+              </div>
+            )
+          })}
+          {canWrite && (
+            <button type="button" onClick={addRow} className="mt-1 text-sm text-[var(--color-brand)] hover:underline">
+              + Tambah produk komponen
+            </button>
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
+              {canWrite ? 'Batal' : 'Tutup'}
+            </button>
+            {canWrite && (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Simpan Bundle
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </Modal>
+  )
+}
+
+// ============================================================
 // MODAL RESEP (BOM) — dipakai dari tombol "Resep" di Tab Produk
 // ============================================================
 function RecipeModal({ product, rawMaterials, canWrite, onClose }) {
@@ -1101,7 +1238,18 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
   const [error, setError] = useState(null)
   const [modal, setModal] = useState(null)
   const [recipeProduct, setRecipeProduct] = useState(null)
+  const [bundleProduct, setBundleProduct] = useState(null)
+  const [allProducts, setAllProducts] = useState([])
   const [busy, setBusy] = useState(false)
+
+  // Daftar semua produk aktif (tanpa paginasi) khusus untuk dropdown
+  // komponen di Modal Bundle — beda dari `products` yang dipaginasi untuk
+  // tabel utama tab ini. Dimuat sekali saat tab dibuka.
+  useEffect(() => {
+    fetchProducts({ active: true, limit: 1000 })
+      .then((res) => setAllProducts(res.data))
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1234,6 +1382,9 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
                     <button onClick={() => setRecipeProduct(p)} className="mr-3 text-[var(--color-brand)] hover:underline">
                       Resep
                     </button>
+                    <button onClick={() => setBundleProduct(p)} className="mr-3 text-[var(--color-brand)] hover:underline">
+                      Bundle
+                    </button>
                     {canWrite && (
                       <button onClick={() => setModal(p)} className="mr-3 text-[var(--color-brand)] hover:underline">
                         Edit
@@ -1282,6 +1433,14 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
           rawMaterials={rawMaterials}
           canWrite={canWrite}
           onClose={() => setRecipeProduct(null)}
+        />
+      )}
+      {bundleProduct && (
+        <BundleModal
+          product={bundleProduct}
+          allProducts={allProducts}
+          canWrite={canWrite}
+          onClose={() => setBundleProduct(null)}
         />
       )}
     </div>

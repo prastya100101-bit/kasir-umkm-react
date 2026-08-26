@@ -14,10 +14,18 @@ import {
   searchProductItems,
   searchRawMaterialItems,
 } from '../api/stockPenuh'
+import {
+  STATUS_LABELS,
+  STATUS_TONE,
+  fetchStockPrediction,
+  fetchStockPredictionConfig,
+  updateStockPredictionConfig,
+} from '../api/stockPrediction'
 
 const TABS = [
   { id: 'penyesuaian', label: 'Penyesuaian Stok' },
   { id: 'transfer', label: 'Transfer Stok' },
+  { id: 'prediksi', label: 'Prediksi Stok (AI)' },
 ]
 
 const STATUS_FILTERS = [
@@ -752,13 +760,297 @@ export default function StokPenuhPage() {
           defaultSubCabangId={defaultSubCabangId}
           isSuperAdmin={isSuperAdmin}
         />
-      ) : (
+      ) : tab === 'transfer' ? (
         <TransferTab
+          subCabangOptions={subCabangOptions}
+          defaultSubCabangId={defaultSubCabangId}
+          isSuperAdmin={isSuperAdmin}
+        />
+      ) : (
+        <PrediksiStokTab
           subCabangOptions={subCabangOptions}
           defaultSubCabangId={defaultSubCabangId}
           isSuperAdmin={isSuperAdmin}
         />
       )}
     </AppLayout>
+  )
+}
+
+const DAYS_OPTIONS = [7, 14, 30]
+
+function StatusBadge({ status }) {
+  const tone = STATUS_TONE[status] || 'neutral'
+  const classes = {
+    danger: 'bg-[var(--color-danger-tint)] text-[var(--color-danger)]',
+    warning: 'bg-[var(--color-warning-tint,#fef3c7)] text-[var(--color-warning,#b45309)]',
+    success: 'bg-[var(--color-success-tint,#dcfce7)] text-[var(--color-success,#16a34a)]',
+    neutral: 'bg-[var(--color-border)] text-[var(--color-ink-soft)]',
+  }
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${classes[tone] || classes.neutral}`}>
+      {STATUS_LABELS[status] || status}
+    </span>
+  )
+}
+
+function PrediksiStokTab({ subCabangOptions, defaultSubCabangId, isSuperAdmin }) {
+  const [days, setDays] = useState(14)
+  const [subCabangId, setSubCabangId] = useState('')
+  const [report, setReport] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const [showConfig, setShowConfig] = useState(false)
+  const [config, setConfig] = useState(null)
+  const [savingConfig, setSavingConfig] = useState(false)
+  const [configError, setConfigError] = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setReport(await fetchStockPrediction({ days, subCabangId: subCabangId || undefined }))
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat prediksi stok.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [days, subCabangId])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function openConfig() {
+    setConfigError(null)
+    setShowConfig(true)
+    try {
+      setConfig(await fetchStockPredictionConfig())
+    } catch (err) {
+      setConfigError(errMsg(err, 'Gagal memuat pengaturan asumsi.'))
+    }
+  }
+
+  async function handleSaveConfig(e) {
+    e.preventDefault()
+    setSavingConfig(true)
+    setConfigError(null)
+    try {
+      await updateStockPredictionConfig({
+        leadTimeDays: Number(config.leadTimeDays),
+        safetyDays: Number(config.safetyDays),
+        targetDays: Number(config.targetDays),
+      })
+      setShowConfig(false)
+      load()
+    } catch (err) {
+      setConfigError(errMsg(err, 'Gagal menyimpan pengaturan.'))
+    } finally {
+      setSavingConfig(false)
+    }
+  }
+
+  const rows = report ? report.rows.filter((r) => statusFilter === 'all' || r.status === statusFilter) : []
+
+  return (
+    <div>
+      {error && (
+        <div className="mb-4 rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-lg border border-[var(--color-border)] p-1 text-xs">
+            {DAYS_OPTIONS.map((d) => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={`rounded-md px-3 py-1.5 font-medium ${
+                  days === d ? 'bg-[var(--color-brand)] text-white' : 'text-[var(--color-ink-soft)]'
+                }`}
+              >
+                {d} hari
+              </button>
+            ))}
+          </div>
+          {subCabangOptions.length > 1 && (
+            <select
+              className={inputClass}
+              value={subCabangId}
+              onChange={(e) => setSubCabangId(e.target.value)}
+            >
+              <option value="">Semua lokasi (sesuai akses saya)</option>
+              {subCabangOptions.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        {isSuperAdmin && (
+          <button
+            onClick={openConfig}
+            className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm font-medium hover:bg-[var(--color-canvas)]"
+          >
+            Atur Asumsi
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <p className="p-5 text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+      ) : !report ? null : (
+        <>
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {['kritis', 'perlu_restock', 'cek_manual', 'aman'].map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(statusFilter === s ? 'all' : s)}
+                className={`rounded-xl border p-4 text-left card-elevated ${
+                  statusFilter === s ? 'border-[var(--color-brand)]' : 'border-[var(--color-border)]'
+                } bg-[var(--color-surface)]`}
+              >
+                <p className="text-xs text-[var(--color-ink-soft)]">{STATUS_LABELS[s]}</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{report.summary[s] ?? 0}</p>
+              </button>
+            ))}
+          </div>
+
+          <p className="mb-2 text-xs text-[var(--color-ink-soft)]">
+            Asumsi saat ini: lead time {report.config.leadTimeDays} hari, safety stock {report.config.safetyDays}{' '}
+            hari, target stok {report.config.targetDays} hari. Dihitung dari kecepatan pakai {report.days} hari
+            terakhir (rule-based, bukan model ML terpisah).
+          </p>
+
+          <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] card-elevated">
+            {rows.length === 0 ? (
+              <p className="p-5 text-sm text-[var(--color-ink-soft)]">
+                Tidak ada item untuk filter ini — item yang tidak pernah laku dan stoknya aman sengaja tidak
+                ditampilkan.
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--color-bg-soft)] text-left text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
+                  <tr>
+                    <th className="px-4 py-3">Item</th>
+                    <th className="px-4 py-3">Tipe</th>
+                    <th className="px-4 py-3 text-right">Stok Saat Ini</th>
+                    <th className="px-4 py-3 text-right">Pakai/Hari</th>
+                    <th className="px-4 py-3 text-right">Estimasi Habis</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Saran Order</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={`${r.itemType}-${r.itemId}`} className="border-t border-[var(--color-border)]">
+                      <td className="px-4 py-3 font-medium text-[var(--color-ink)]">{r.name}</td>
+                      <td className="px-4 py-3 text-[var(--color-ink-soft)]">
+                        {r.itemType === 'produk' ? 'Produk' : 'Bahan Baku'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-[var(--color-ink-soft)]">
+                        {r.currentStock} {r.unit}
+                      </td>
+                      <td className="px-4 py-3 text-right text-[var(--color-ink-soft)]">
+                        {r.avgDailyUsage} {r.unit}
+                      </td>
+                      <td className="px-4 py-3 text-right text-[var(--color-ink-soft)]">
+                        {r.daysUntilStockout === null ? '-' : `${r.daysUntilStockout} hari`}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={r.status} />
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-[var(--color-ink)]">
+                        {r.suggestedOrderQty > 0 ? `${r.suggestedOrderQty} ${r.unit}` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+
+      {showConfig && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-[var(--color-surface)] p-6 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold text-[var(--color-ink)]">
+                Atur Asumsi Prediksi
+              </h2>
+              <button
+                onClick={() => setShowConfig(false)}
+                className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]"
+              >
+                ✕
+              </button>
+            </div>
+            {configError && (
+              <div className="mb-4 rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">
+                {configError}
+              </div>
+            )}
+            {!config ? (
+              <p className="text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+            ) : (
+              <form onSubmit={handleSaveConfig}>
+                <Field label="Lead Time (hari) — waktu tunggu barang datang setelah dipesan">
+                  <input
+                    type="number"
+                    min="0"
+                    className={inputClass}
+                    value={config.leadTimeDays}
+                    onChange={(e) => setConfig({ ...config, leadTimeDays: e.target.value })}
+                    required
+                  />
+                </Field>
+                <Field label="Safety Stock (hari) — buffer tambahan di atas lead time">
+                  <input
+                    type="number"
+                    min="0"
+                    className={inputClass}
+                    value={config.safetyDays}
+                    onChange={(e) => setConfig({ ...config, safetyDays: e.target.value })}
+                    required
+                  />
+                </Field>
+                <Field label="Target Stok (hari) — target hari stok saat order disarankan">
+                  <input
+                    type="number"
+                    min="1"
+                    className={inputClass}
+                    value={config.targetDays}
+                    onChange={(e) => setConfig({ ...config, targetDays: e.target.value })}
+                    required
+                  />
+                </Field>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfig(false)}
+                    className="rounded-md px-4 py-2 text-sm font-medium text-[var(--color-ink-soft)]"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingConfig}
+                    className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {savingConfig ? 'Menyimpan...' : 'Simpan'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

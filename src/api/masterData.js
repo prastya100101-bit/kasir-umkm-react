@@ -133,6 +133,24 @@ export async function saveRecipe(productId, items) {
 }
 
 // ============================================================
+// BUNDLE PRODUK — controllers/bundleController.js, mount '/api/bundle'
+// Beda dari Resep (BOM bahan baku): bundle isinya produk jadi lain
+// (mis. paket "Nasi + Es Teh" berisi 2 produk jadi terpisah). GET bisa
+// semua role login, PUT (simpan) dikunci requireRole('Super Admin') di
+// backend — replace-all sama pola dengan Resep.
+// ============================================================
+
+export async function fetchBundle(productId) {
+  const { data } = await apiClient.get(`/api/bundle/${productId}`)
+  return data
+}
+
+export async function saveBundle(productId, items) {
+  const { data } = await apiClient.put(`/api/bundle/${productId}`, { items })
+  return data
+}
+
+// ============================================================
 // PELANGGAN — controllers/customerController.js, mount '/api/pelanggan'
 // create() WAJIB kirim `id` dari klien (bukan auto dari backend) — sama
 // pola dengan Kasbon/CashAccount transfer, dipakai untuk idempotency.
