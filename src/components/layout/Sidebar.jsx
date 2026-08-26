@@ -13,6 +13,8 @@ const NAV_ITEMS = [
     roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW],
   },
   { to: '/margin', label: 'Margin Lokasi', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV] },
+  { to: '/purchasing', label: 'Purchasing', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV] },
+  { to: '/produksi', label: 'Produksi', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV] },
   { to: '/stock-rebalancing', label: 'Stock Rebalancing', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV] },
   { to: '/rekonsiliasi', label: 'Rekonsiliasi', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV] },
 ]
