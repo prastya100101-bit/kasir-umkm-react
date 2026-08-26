@@ -28,6 +28,13 @@ import {
   updateCustomer,
   deleteCustomer,
 } from '../api/masterData'
+import {
+  fetchAllLocations,
+  createCabang,
+  updateCabang,
+  createSubCabang,
+  updateSubCabang,
+} from '../api/locations'
 
 const TABS = [
   { id: 'kategori', label: 'Kategori' },
@@ -35,6 +42,7 @@ const TABS = [
   { id: 'produk', label: 'Produk' },
   { id: 'bahan-baku', label: 'Bahan Baku' },
   { id: 'pelanggan', label: 'Pelanggan' },
+  { id: 'cabang', label: 'Cabang & Sub Cabang' },
 ]
 
 function errMsg(err, fallback) {
@@ -1448,6 +1456,347 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
 }
 
 // ============================================================
+// TAB CABANG & SUB CABANG — BARU
+// ============================================================
+function CabangForm({ initial, onSubmit, onClose, busy }) {
+  const [form, setForm] = useState(initial ? { name: initial.name, active: initial.active !== false } : { name: '', active: true })
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSubmit(form)
+      }}
+    >
+      <Field label="Nama cabang *">
+        <input
+          className={inputClass}
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          required
+          autoFocus
+        />
+      </Field>
+      {initial && (
+        <Field label="Status">
+          <select
+            className={inputClass}
+            value={form.active ? '1' : '0'}
+            onChange={(e) => setForm({ ...form, active: e.target.value === '1' })}
+          >
+            <option value="1">Aktif</option>
+            <option value="0">Nonaktif</option>
+          </select>
+        </Field>
+      )}
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
+          Batal
+        </button>
+        <button
+          type="submit"
+          disabled={busy || !form.name.trim()}
+          className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          Simpan
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function SubCabangForm({ initial, cabangOptions, defaultCabangId, onSubmit, onClose, busy }) {
+  const [form, setForm] = useState(
+    initial
+      ? { name: initial.name, cabangId: initial.parentId, isProductionHub: !!initial.isProductionHub, active: initial.active !== false }
+      : { name: '', cabangId: defaultCabangId || '', isProductionHub: false, active: true }
+  )
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSubmit(form)
+      }}
+    >
+      <Field label="Nama sub cabang *">
+        <input
+          className={inputClass}
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          required
+          autoFocus
+        />
+      </Field>
+      <Field label="Cabang induk *">
+        <select
+          className={inputClass}
+          value={form.cabangId}
+          onChange={(e) => setForm({ ...form, cabangId: e.target.value })}
+          required
+        >
+          <option value="">Pilih cabang...</option>
+          {cabangOptions.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Tipe">
+        <label className="flex items-center gap-2 text-sm text-[var(--color-ink)]">
+          <input
+            type="checkbox"
+            checked={form.isProductionHub}
+            onChange={(e) => setForm({ ...form, isProductionHub: e.target.checked })}
+          />
+          Hub Produksi / Gudang
+        </label>
+      </Field>
+      {initial && (
+        <Field label="Status">
+          <select
+            className={inputClass}
+            value={form.active ? '1' : '0'}
+            onChange={(e) => setForm({ ...form, active: e.target.value === '1' })}
+          >
+            <option value="1">Aktif</option>
+            <option value="0">Nonaktif</option>
+          </select>
+        </Field>
+      )}
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
+          Batal
+        </button>
+        <button
+          type="submit"
+          disabled={busy || !form.name.trim() || !form.cabangId}
+          className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          Simpan
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function CabangTab({ canWrite }) {
+  const [locations, setLocations] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [showCabangForm, setShowCabangForm] = useState(false)
+  const [editingCabang, setEditingCabang] = useState(null)
+  const [subCabangFormFor, setSubCabangFormFor] = useState(null) // cabangId yang lagi ditambah sub cabang barunya
+  const [editingSubCabang, setEditingSubCabang] = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await fetchAllLocations()
+      setLocations(data.locations || [])
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat data cabang.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const cabangs = locations.filter((l) => l.type === 'CABANG')
+  const subCabangs = locations.filter((l) => l.type === 'SUBCABANG')
+
+  async function handleCreateCabang(form) {
+    setBusy(true)
+    setError(null)
+    try {
+      await createCabang({ name: form.name.trim() })
+      setShowCabangForm(false)
+      load()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menambah cabang.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleUpdateCabang(form) {
+    setBusy(true)
+    setError(null)
+    try {
+      await updateCabang(editingCabang.id, { name: form.name.trim(), active: form.active })
+      setEditingCabang(null)
+      load()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan perubahan cabang.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCreateSubCabang(form) {
+    setBusy(true)
+    setError(null)
+    try {
+      await createSubCabang({ name: form.name.trim(), cabangId: form.cabangId, isProductionHub: form.isProductionHub })
+      setSubCabangFormFor(null)
+      load()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menambah sub cabang.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleUpdateSubCabang(form) {
+    setBusy(true)
+    setError(null)
+    try {
+      await updateSubCabang(editingSubCabang.id, {
+        name: form.name.trim(),
+        cabangId: form.cabangId,
+        isProductionHub: form.isProductionHub,
+        active: form.active,
+      })
+      setEditingSubCabang(null)
+      load()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan perubahan sub cabang.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div>
+      <ErrorBanner message={error} />
+      {canWrite && (
+        <div className="mb-4">
+          <button
+            onClick={() => setShowCabangForm(true)}
+            className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
+          >
+            + Tambah Cabang
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="p-5 text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+      ) : cabangs.length === 0 ? (
+        <p className="p-5 text-sm text-[var(--color-ink-soft)]">Belum ada cabang.</p>
+      ) : (
+        <div className="space-y-4">
+          {cabangs.map((c) => (
+            <div
+              key={c.id}
+              className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] card-elevated"
+            >
+              <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-[family-name:var(--font-display)] font-semibold text-[var(--color-ink)]">
+                    {c.name}
+                  </span>
+                  {c.active === false && (
+                    <span className="rounded-full bg-[var(--color-danger-tint)] px-2 py-0.5 text-xs text-[var(--color-danger)]">
+                      Nonaktif
+                    </span>
+                  )}
+                </div>
+                {canWrite && (
+                  <div className="flex gap-3 text-sm">
+                    <button onClick={() => setSubCabangFormFor(c.id)} className="text-[var(--color-brand)] hover:underline">
+                      + Sub Cabang
+                    </button>
+                    <button onClick={() => setEditingCabang(c)} className="text-[var(--color-brand)] hover:underline">
+                      Edit
+                    </button>
+                  </div>
+                )}
+              </div>
+              <table className="w-full text-left text-sm">
+                <tbody>
+                  {subCabangs.filter((s) => s.parentId === c.id).length === 0 ? (
+                    <tr>
+                      <td className="px-5 py-3 text-[var(--color-ink-soft)]" colSpan={2}>
+                        Belum ada sub cabang.
+                      </td>
+                    </tr>
+                  ) : (
+                    subCabangs
+                      .filter((s) => s.parentId === c.id)
+                      .map((s) => (
+                        <tr key={s.id} className="border-b border-[var(--color-border)] last:border-0">
+                          <td className="px-5 py-2.5">
+                            <span className="text-[var(--color-ink)]">{s.name}</span>
+                            {s.isProductionHub && (
+                              <span className="ml-2 rounded-full bg-[var(--color-accent-tint)] px-2 py-0.5 text-xs text-[var(--color-accent)]">
+                                Hub Produksi
+                              </span>
+                            )}
+                            {s.active === false && (
+                              <span className="ml-2 rounded-full bg-[var(--color-danger-tint)] px-2 py-0.5 text-xs text-[var(--color-danger)]">
+                                Nonaktif
+                              </span>
+                            )}
+                          </td>
+                          {canWrite && (
+                            <td className="px-5 py-2.5 text-right">
+                              <button onClick={() => setEditingSubCabang(s)} className="text-[var(--color-brand)] hover:underline">
+                                Edit
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showCabangForm && (
+        <Modal title="Tambah Cabang" onClose={() => setShowCabangForm(false)}>
+          <CabangForm onSubmit={handleCreateCabang} onClose={() => setShowCabangForm(false)} busy={busy} />
+        </Modal>
+      )}
+      {editingCabang && (
+        <Modal title="Edit Cabang" onClose={() => setEditingCabang(null)}>
+          <CabangForm initial={editingCabang} onSubmit={handleUpdateCabang} onClose={() => setEditingCabang(null)} busy={busy} />
+        </Modal>
+      )}
+      {subCabangFormFor && (
+        <Modal title="Tambah Sub Cabang" onClose={() => setSubCabangFormFor(null)}>
+          <SubCabangForm
+            cabangOptions={cabangs}
+            defaultCabangId={subCabangFormFor}
+            onSubmit={handleCreateSubCabang}
+            onClose={() => setSubCabangFormFor(null)}
+            busy={busy}
+          />
+        </Modal>
+      )}
+      {editingSubCabang && (
+        <Modal title="Edit Sub Cabang" onClose={() => setEditingSubCabang(null)}>
+          <SubCabangForm
+            initial={editingSubCabang}
+            cabangOptions={cabangs}
+            onSubmit={handleUpdateSubCabang}
+            onClose={() => setEditingSubCabang(null)}
+            busy={busy}
+          />
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
 // HALAMAN UTAMA
 // ============================================================
 export default function MasterDataPage() {
@@ -1513,6 +1862,7 @@ export default function MasterDataPage() {
         />
       )}
       {tab === 'pelanggan' && <CustomerTab canWrite isSuperAdmin={isSuperAdmin} />}
+      {tab === 'cabang' && <CabangTab canWrite={isSuperAdmin} />}
     </AppLayout>
   )
 }
