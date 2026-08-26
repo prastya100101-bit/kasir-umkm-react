@@ -90,6 +90,58 @@ export async function rejectTransfer(id, rejectionReason) {
 }
 
 // ============================================================
+// STOCK OPNAME — controllers/stockController.js, mount '/api/stok/opname'
+// 1 sesi = hitung fisik SEMUA produk aktif + bahan baku di 1 lokasi
+// sekaligus (bukan 1 item per request seperti Penyesuaian). Approval
+// SELALU wajib Super Admin (tidak ada auto-approve threshold).
+// ============================================================
+
+export async function fetchOpnameSessions({ status } = {}) {
+  const params = status ? { status } : {}
+  const { data } = await apiClient.get('/api/stok/opname', { params })
+  return data
+}
+
+export async function fetchOpnameSession(id) {
+  const { data } = await apiClient.get(`/api/stok/opname/${id}`)
+  return data
+}
+
+export async function createOpnameSession({ subCabangId, note }) {
+  const id = crypto.randomUUID()
+  const { data } = await apiClient.post('/api/stok/opname', { id, subCabangId, note: note || undefined })
+  return data
+}
+
+// items: [{ id, physicalQty, note? }] — physicalQty boleh angka atau '' (artinya belum dihitung)
+export async function saveOpnameItems(sessionId, items) {
+  const { data } = await apiClient.put(`/api/stok/opname/${sessionId}/items`, { items })
+  return data
+}
+
+export async function submitOpnameSession(id) {
+  const { data } = await apiClient.post(`/api/stok/opname/${id}/submit`)
+  return data
+}
+
+export async function cancelOpnameSession(id) {
+  const { data } = await apiClient.post(`/api/stok/opname/${id}/cancel`)
+  return data
+}
+
+export async function approveOpnameSession(id) {
+  const { data } = await apiClient.post(`/api/stok/opname/${id}/approve`)
+  return data
+}
+
+export async function rejectOpnameSession(id, rejectionReason) {
+  const { data } = await apiClient.post(`/api/stok/opname/${id}/reject`, {
+    rejectionReason: rejectionReason || undefined,
+  })
+  return data
+}
+
+// ============================================================
 // PENCARIAN ITEM (produk / bahan baku) untuk form Penyesuaian & Transfer.
 // Produk: pakai fetchProducts yang sudah ada di masterData.js (active-only,
 // biar tidak bisa menyesuaikan/transfer produk yang sudah dinonaktifkan).

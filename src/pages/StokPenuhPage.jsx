@@ -13,6 +13,14 @@ import {
   rejectTransfer,
   searchProductItems,
   searchRawMaterialItems,
+  fetchOpnameSessions,
+  fetchOpnameSession,
+  createOpnameSession,
+  saveOpnameItems,
+  submitOpnameSession,
+  cancelOpnameSession,
+  approveOpnameSession,
+  rejectOpnameSession,
 } from '../api/stockPenuh'
 import {
   STATUS_LABELS,
@@ -25,8 +33,31 @@ import {
 const TABS = [
   { id: 'penyesuaian', label: 'Penyesuaian Stok' },
   { id: 'transfer', label: 'Transfer Stok' },
+  { id: 'opname', label: 'Stock Opname' },
   { id: 'prediksi', label: 'Prediksi Stok (AI)' },
 ]
+
+const OPNAME_STATUS_FILTERS = [
+  { id: '', label: 'Semua' },
+  { id: 'draft', label: 'Draft' },
+  { id: 'submitted', label: 'Menunggu' },
+  { id: 'approved', label: 'Disetujui' },
+  { id: 'rejected', label: 'Ditolak' },
+]
+
+const OPNAME_STATUS_TONE = {
+  draft: 'text-[var(--color-ink-soft)]',
+  submitted: 'text-[var(--color-warning)]',
+  approved: 'text-[var(--color-brand)]',
+  rejected: 'text-[var(--color-danger)]',
+}
+
+const OPNAME_STATUS_LABEL = {
+  draft: 'Draft',
+  submitted: 'Menunggu persetujuan',
+  approved: 'Disetujui',
+  rejected: 'Ditolak',
+}
 
 const STATUS_FILTERS = [
   { id: '', label: 'Semua' },
@@ -716,6 +747,558 @@ function TransferTab({ subCabangOptions, defaultSubCabangId, isSuperAdmin }) {
 }
 
 // ============================================================
+// TAB STOCK OPNAME
+//
+// Beda dari Penyesuaian: 1 sesi mencakup SEMUA produk aktif + bahan baku
+// di 1 lokasi sekaligus (snapshot dibuat server saat sesi dibuat), bukan
+// 1 item per permintaan. Alur: pilih lokasi -> isi hasil hitung fisik tiap
+// item (bisa disimpan bertahap) -> ajukan (WAJIB semua item terisi) ->
+// Super Admin setujui/tolak. Approve = qty sistem di-SET ke hasil hitung.
+// ============================================================
+function OpnameNewSessionForm({ subCabangOptions, defaultSubCabangId, onCreated }) {
+  const [subCabangId, setSubCabangId] = useState(defaultSubCabangId || '')
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const locked = subCabangOptions.length === 1
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!subCabangId) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const session = await createOpnameSession({ subCabangId, note })
+      setNote('')
+      onCreated(session.id)
+    } catch (err) {
+      setError(errMsg(err, 'Gagal membuat sesi stock opname.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="card-elevated mb-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
+    >
+      <h2 className="mb-1 font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-ink)]">
+        Mulai Sesi Stock Opname Baru
+      </h2>
+      <p className="mb-4 text-sm text-[var(--color-ink-soft)]">
+        Semua produk aktif dan bahan baku di lokasi terpilih otomatis dimuat untuk dihitung fisiknya.
+      </p>
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
+
+      <Field label="Lokasi">
+        <select
+          className={inputClass}
+          value={subCabangId}
+          onChange={(e) => setSubCabangId(e.target.value)}
+          disabled={locked}
+          required
+        >
+          {!subCabangId && <option value="">Pilih lokasi…</option>}
+          {subCabangOptions.map((loc) => (
+            <option key={loc.id} value={loc.id}>
+              {loc.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Catatan (opsional)">
+        <textarea className={inputClass} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+
+      <button
+        type="submit"
+        disabled={submitting || !subCabangId}
+        className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {submitting ? 'Membuat sesi…' : 'Mulai Hitung'}
+      </button>
+    </form>
+  )
+}
+
+function OpnameSessionRow({ session, onOpen }) {
+  return (
+    <tr className="border-b border-[var(--color-border)] last:border-0">
+      <td className="px-5 py-3 font-medium text-[var(--color-ink)]">{session.subCabang?.name ?? '—'}</td>
+      <td className="px-5 py-3 text-[var(--color-ink-soft)]">{session.creator?.name ?? session.createdByName}</td>
+      <td className="px-5 py-3 text-[var(--color-ink-soft)]">
+        {new Date(session.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+      </td>
+      <td className={`px-5 py-3 font-medium ${OPNAME_STATUS_TONE[session.status] || ''}`}>
+        {OPNAME_STATUS_LABEL[session.status] || session.status}
+        {session.status === 'rejected' && session.rejectionReason && (
+          <p className="mt-0.5 text-xs font-normal text-[var(--color-ink-soft)]">{session.rejectionReason}</p>
+        )}
+      </td>
+      <td className="px-5 py-3 text-right">
+        <button
+          onClick={() => onOpen(session.id)}
+          className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
+        >
+          Lihat
+        </button>
+      </td>
+    </tr>
+  )
+}
+
+function OpnameSessionList({ subCabangOptions, defaultSubCabangId, onOpen }) {
+  const [sessions, setSessions] = useState(null)
+  const [status, setStatus] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const load = useCallback((s) => {
+    setIsLoading(true)
+    setError(null)
+    fetchOpnameSessions({ status: s || undefined })
+      .then(setSessions)
+      .catch((err) => setError(errMsg(err, 'Gagal memuat daftar stock opname.')))
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  useEffect(() => {
+    load(status)
+  }, [load, status])
+
+  return (
+    <>
+      <OpnameNewSessionForm
+        subCabangOptions={subCabangOptions}
+        defaultSubCabangId={defaultSubCabangId}
+        onCreated={onOpen}
+      />
+
+      <div className="mb-3 flex gap-1 rounded-md border border-[var(--color-border)] p-1 text-sm w-fit">
+        {OPNAME_STATUS_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => setStatus(f.id)}
+            className={`rounded px-3 py-1 font-medium transition-colors ${
+              status === f.id
+                ? 'bg-[var(--color-brand)] text-white'
+                : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
+
+      {isLoading && !error && (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-12 animate-pulse rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
+          ))}
+        </div>
+      )}
+
+      {!isLoading && !error && (!sessions || sessions.length === 0) && (
+        <div className="flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
+          <p className="text-sm text-[var(--color-ink-soft)]">Belum ada sesi stock opname.</p>
+        </div>
+      )}
+
+      {!isLoading && !error && sessions && sessions.length > 0 && (
+        <div className="card-elevated overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
+                <th className="px-5 py-3 font-medium">Lokasi</th>
+                <th className="px-5 py-3 font-medium">Dibuat oleh</th>
+                <th className="px-5 py-3 font-medium">Tanggal</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 text-right font-medium">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((s) => (
+                <OpnameSessionRow key={s.id} session={s} onOpen={onOpen} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
+function OpnameItemRow({ item, draft, draftValue, onChange }) {
+  const system = Number(item.systemQty)
+  const physical = draftValue === '' || draftValue === undefined ? null : Number(draftValue)
+  const diff = physical === null ? null : physical - system
+
+  return (
+    <tr className="border-b border-[var(--color-border)] last:border-0">
+      <td className="px-4 py-2 font-medium text-[var(--color-ink)]">{itemName(item)}</td>
+      <td className="px-4 py-2 text-[var(--color-ink-soft)]">{itemUnit(item)}</td>
+      <td className="px-4 py-2 text-right figure text-[var(--color-ink-soft)]">{system}</td>
+      <td className="px-4 py-2 text-right">
+        {draft ? (
+          <input
+            type="number"
+            min="0"
+            step="any"
+            className="w-28 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-right text-sm"
+            value={draftValue ?? ''}
+            onChange={(e) => onChange(item.id, e.target.value)}
+            placeholder="—"
+          />
+        ) : (
+          <span className="figure">{item.physicalQty === null ? '—' : Number(item.physicalQty)}</span>
+        )}
+      </td>
+      <td
+        className={`px-4 py-2 text-right figure font-medium ${
+          diff === null || diff === 0
+            ? 'text-[var(--color-ink-soft)]'
+            : diff > 0
+              ? 'text-[var(--color-brand)]'
+              : 'text-[var(--color-danger)]'
+        }`}
+      >
+        {diff === null ? '—' : diff > 0 ? `+${diff}` : diff}
+      </td>
+    </tr>
+  )
+}
+
+function OpnameDetail({ sessionId, isSuperAdmin, onBack, onChanged }) {
+  const [session, setSession] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [drafts, setDrafts] = useState({}) // itemId -> string yang sedang diketik, belum disimpan
+  const [search, setSearch] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [acting, setActing] = useState(false)
+  const [showRejectBox, setShowRejectBox] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+
+  const load = useCallback(() => {
+    setIsLoading(true)
+    setError(null)
+    fetchOpnameSession(sessionId)
+      .then((data) => {
+        setSession(data)
+        setDrafts({})
+      })
+      .catch((err) => setError(errMsg(err, 'Gagal memuat sesi stock opname.')))
+      .finally(() => setIsLoading(false))
+  }, [sessionId])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  if (isLoading) {
+    return <div className="h-40 animate-pulse rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
+  }
+  if (error && !session) {
+    return <div className="rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">{error}</div>
+  }
+  if (!session) return null
+
+  const isDraft = session.status === 'draft'
+  const items = session.items || []
+  const filtered = search.trim()
+    ? items.filter((it) => itemName(it).toLowerCase().includes(search.trim().toLowerCase()))
+    : items
+  const belumDihitung = items.filter((it) => {
+    const v = drafts[it.id] !== undefined ? drafts[it.id] : it.physicalQty
+    return v === null || v === undefined || v === ''
+  }).length
+
+  function handleChange(itemId, value) {
+    setDrafts((prev) => ({ ...prev, [itemId]: value }))
+  }
+
+  async function handleSave() {
+    const changedIds = Object.keys(drafts)
+    if (changedIds.length === 0) return true
+    setSaving(true)
+    setError(null)
+    try {
+      await saveOpnameItems(
+        sessionId,
+        changedIds.map((id) => ({ id, physicalQty: drafts[id] === '' ? null : drafts[id] })),
+      )
+      await load()
+      onChanged?.()
+      return true
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan hasil hitung.'))
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSubmit() {
+    const ok = await handleSave()
+    if (!ok) return
+    setActing(true)
+    setError(null)
+    try {
+      await submitOpnameSession(sessionId)
+      await load()
+      onChanged?.()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal mengajukan sesi untuk persetujuan.'))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  async function handleCancel() {
+    if (!window.confirm('Batalkan sesi ini? Semua hasil hitung yang sudah diisi akan hilang.')) return
+    setActing(true)
+    setError(null)
+    try {
+      await cancelOpnameSession(sessionId)
+      onChanged?.()
+      onBack()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal membatalkan sesi.'))
+      setActing(false)
+    }
+  }
+
+  async function handleApprove() {
+    setActing(true)
+    setError(null)
+    try {
+      await approveOpnameSession(sessionId)
+      await load()
+      onChanged?.()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyetujui sesi.'))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  async function handleReject() {
+    setActing(true)
+    setError(null)
+    try {
+      await rejectOpnameSession(sessionId, rejectReason)
+      setShowRejectBox(false)
+      setRejectReason('')
+      await load()
+      onChanged?.()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menolak sesi.'))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        className="mb-4 text-sm font-medium text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]"
+      >
+        ← Kembali ke daftar
+      </button>
+
+      <div className="card-elevated mb-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-ink)]">
+              Stock Opname — {session.subCabang?.name ?? '—'}
+            </h2>
+            <p className="mt-1 text-sm text-[var(--color-ink-soft)]">
+              Dibuat oleh {session.creator?.name ?? session.createdByName} ·{' '}
+              {new Date(session.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
+            {session.note && <p className="mt-1 text-sm text-[var(--color-ink-soft)]">Catatan: {session.note}</p>}
+          </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-medium ${OPNAME_STATUS_TONE[session.status] || ''}`}>
+            {OPNAME_STATUS_LABEL[session.status] || session.status}
+          </span>
+        </div>
+
+        {session.status === 'rejected' && session.rejectionReason && (
+          <div className="mt-3 rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">
+            Alasan ditolak: {session.rejectionReason}
+          </div>
+        )}
+
+        {isDraft && (
+          <p className="mt-3 text-sm text-[var(--color-ink-soft)]">
+            {belumDihitung === 0
+              ? 'Semua item sudah dihitung — siap diajukan.'
+              : `${belumDihitung} dari ${items.length} item belum dihitung.`}
+          </p>
+        )}
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <input
+          type="text"
+          placeholder="Cari item…"
+          className={`${inputClass} max-w-xs`}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="flex flex-wrap gap-2">
+          {isDraft && (
+            <>
+              <button
+                onClick={handleCancel}
+                disabled={acting}
+                className="rounded-lg border border-[var(--color-danger)] px-4 py-2 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 disabled:opacity-50"
+              >
+                Batalkan Sesi
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || Object.keys(drafts).length === 0}
+                className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)] disabled:opacity-50"
+              >
+                {saving ? 'Menyimpan…' : 'Simpan Progres'}
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={acting || saving || belumDihitung > 0}
+                className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                Ajukan untuk Persetujuan
+              </button>
+            </>
+          )}
+          {isSuperAdmin && session.status === 'submitted' && !showRejectBox && (
+            <>
+              <button
+                onClick={() => setShowRejectBox(true)}
+                disabled={acting}
+                className="rounded-lg border border-[var(--color-danger)] px-4 py-2 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 disabled:opacity-50"
+              >
+                Tolak
+              </button>
+              <button
+                onClick={handleApprove}
+                disabled={acting}
+                className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {acting ? 'Memproses…' : 'Setujui & Terapkan'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {isSuperAdmin && session.status === 'submitted' && showRejectBox && (
+        <div className="card-elevated mb-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <Field label="Alasan penolakan (opsional)">
+            <textarea className={inputClass} rows={2} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+          </Field>
+          <div className="flex gap-2">
+            <button
+              onClick={handleReject}
+              disabled={acting}
+              className="rounded-lg bg-[var(--color-danger)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            >
+              Konfirmasi Tolak
+            </button>
+            <button
+              onClick={() => setShowRejectBox(false)}
+              className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="card-elevated overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
+              <th className="px-4 py-3 font-medium">Item</th>
+              <th className="px-4 py-3 font-medium">Satuan</th>
+              <th className="px-4 py-3 text-right font-medium">Stok Sistem</th>
+              <th className="px-4 py-3 text-right font-medium">Hasil Fisik</th>
+              <th className="px-4 py-3 text-right font-medium">Selisih</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((item) => (
+              <OpnameItemRow
+                key={item.id}
+                item={item}
+                draft={isDraft}
+                draftValue={
+                  drafts[item.id] !== undefined ? drafts[item.id] : item.physicalQty === null ? '' : String(item.physicalQty)
+                }
+                onChange={handleChange}
+              />
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <div className="flex h-24 items-center justify-center text-sm text-[var(--color-ink-soft)]">
+            Tidak ada item yang cocok.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function OpnameTab({ subCabangOptions, defaultSubCabangId, isSuperAdmin }) {
+  const [openSessionId, setOpenSessionId] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  if (openSessionId) {
+    return (
+      <OpnameDetail
+        key={openSessionId}
+        sessionId={openSessionId}
+        isSuperAdmin={isSuperAdmin}
+        onBack={() => setOpenSessionId(null)}
+        onChanged={() => setRefreshKey((k) => k + 1)}
+      />
+    )
+  }
+
+  return (
+    <OpnameSessionList
+      key={refreshKey}
+      subCabangOptions={subCabangOptions}
+      defaultSubCabangId={defaultSubCabangId}
+      onOpen={setOpenSessionId}
+    />
+  )
+}
+
+// ============================================================
 // HALAMAN
 // ============================================================
 export default function StokPenuhPage() {
@@ -762,6 +1345,12 @@ export default function StokPenuhPage() {
         />
       ) : tab === 'transfer' ? (
         <TransferTab
+          subCabangOptions={subCabangOptions}
+          defaultSubCabangId={defaultSubCabangId}
+          isSuperAdmin={isSuperAdmin}
+        />
+      ) : tab === 'opname' ? (
+        <OpnameTab
           subCabangOptions={subCabangOptions}
           defaultSubCabangId={defaultSubCabangId}
           isSuperAdmin={isSuperAdmin}
