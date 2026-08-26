@@ -86,6 +86,53 @@ export async function deactivateProduct(id) {
 }
 
 // ============================================================
+// BAHAN BAKU — controllers/rawMaterialController.js, mount '/api/bahan-baku'
+// list()/getById() bisa diakses semua role login; create/update/delete
+// Super Admin saja (sama pola dengan Produk). stock/stockGudang cuma
+// dipakai saat CREATE (stok awal) — sesudah itu wajib lewat
+// Penyesuaian/Transfer Stok, PUT tidak menerima field stock.
+// ============================================================
+
+export async function fetchRawMaterials({ search } = {}) {
+  const params = {}
+  if (search) params.search = search
+  const { data } = await apiClient.get('/api/bahan-baku', { params })
+  return data
+}
+
+export async function createRawMaterial(payload) {
+  const { data } = await apiClient.post('/api/bahan-baku', payload)
+  return data
+}
+
+export async function updateRawMaterial(id, payload) {
+  const { data } = await apiClient.put(`/api/bahan-baku/${id}`, payload)
+  return data
+}
+
+export async function deleteRawMaterial(id) {
+  const { data } = await apiClient.delete(`/api/bahan-baku/${id}`)
+  return data
+}
+
+// ============================================================
+// RESEP (BOM) — controllers/recipeController.js, mount '/api/resep'
+// getForProduct() bisa diakses semua role login; saveForProduct() Super
+// Admin saja. saveForProduct() replace-all: setiap save mengganti SELURUH
+// daftar item produk ini, jadi klien harus selalu kirim array lengkap.
+// ============================================================
+
+export async function fetchRecipe(productId) {
+  const { data } = await apiClient.get(`/api/resep/${productId}`)
+  return data
+}
+
+export async function saveRecipe(productId, items) {
+  const { data } = await apiClient.put(`/api/resep/${productId}`, { items })
+  return data
+}
+
+// ============================================================
 // PELANGGAN — controllers/customerController.js, mount '/api/pelanggan'
 // create() WAJIB kirim `id` dari klien (bukan auto dari backend) — sama
 // pola dengan Kasbon/CashAccount transfer, dipakai untuk idempotency.

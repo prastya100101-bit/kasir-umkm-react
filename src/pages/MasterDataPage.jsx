@@ -15,6 +15,12 @@ import {
   createProduct,
   updateProduct,
   deactivateProduct,
+  fetchRawMaterials,
+  createRawMaterial,
+  updateRawMaterial,
+  deleteRawMaterial,
+  fetchRecipe,
+  saveRecipe,
   fetchCustomers,
   createCustomer,
   updateCustomer,
@@ -25,6 +31,7 @@ const TABS = [
   { id: 'kategori', label: 'Kategori' },
   { id: 'supplier', label: 'Supplier' },
   { id: 'produk', label: 'Produk' },
+  { id: 'bahan-baku', label: 'Bahan Baku' },
   { id: 'pelanggan', label: 'Pelanggan' },
 ]
 
@@ -395,6 +402,350 @@ function SupplierTab({ canWrite }) {
 }
 
 // ============================================================
+// TAB BAHAN BAKU
+// ============================================================
+function RawMaterialForm({ initial, suppliers, onSubmit, onClose, busy }) {
+  const isEdit = Boolean(initial)
+  const [form, setForm] = useState(
+    initial
+      ? {
+          name: initial.name,
+          unit: initial.unit,
+          costPerUnit: initial.costPerUnit,
+          minStock: initial.minStock,
+          supplierId: initial.supplierId || '',
+        }
+      : {
+          name: '',
+          unit: '',
+          costPerUnit: 0,
+          minStock: 0,
+          supplierId: '',
+          stock: 0,
+          stockGudang: 0,
+        }
+  )
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }))
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        const payload = {
+          ...form,
+          supplierId: form.supplierId || null,
+          costPerUnit: Number(form.costPerUnit),
+          minStock: Number(form.minStock),
+        }
+        if (!isEdit) {
+          payload.stock = Number(form.stock)
+          payload.stockGudang = Number(form.stockGudang)
+        }
+        onSubmit(payload)
+      }}
+    >
+      <Field label="Nama bahan baku *">
+        <input className={inputClass} value={form.name} onChange={(e) => set('name', e.target.value)} required />
+      </Field>
+      <Field label="Satuan *">
+        <input
+          className={inputClass}
+          value={form.unit}
+          onChange={(e) => set('unit', e.target.value)}
+          placeholder="gram, ml, pcs..."
+          required
+        />
+      </Field>
+      <Field label="Harga per unit *">
+        <input
+          type="number"
+          min="0"
+          className={inputClass}
+          value={form.costPerUnit}
+          onChange={(e) => set('costPerUnit', e.target.value)}
+          required
+        />
+      </Field>
+      <Field label="Supplier">
+        <select className={inputClass} value={form.supplierId} onChange={(e) => set('supplierId', e.target.value)}>
+          <option value="">— Tanpa supplier —</option>
+          {suppliers.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Stok minimum (alert)">
+        <input type="number" min="0" className={inputClass} value={form.minStock} onChange={(e) => set('minStock', e.target.value)} />
+      </Field>
+      {!isEdit && (
+        <div className="grid grid-cols-2 gap-x-3">
+          <Field label="Stok awal — Toko">
+            <input type="number" min="0" className={inputClass} value={form.stock} onChange={(e) => set('stock', e.target.value)} />
+          </Field>
+          <Field label="Stok awal — Gudang">
+            <input
+              type="number"
+              min="0"
+              className={inputClass}
+              value={form.stockGudang}
+              onChange={(e) => set('stockGudang', e.target.value)}
+            />
+          </Field>
+        </div>
+      )}
+      {!isEdit && (
+        <p className="mt-2 text-xs text-[var(--color-ink-soft)]">
+          Stok setelah ini hanya bisa diubah lewat Penyesuaian/Transfer Stok, bukan lewat form ini.
+        </p>
+      )}
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
+          Batal
+        </button>
+        <button
+          type="submit"
+          disabled={busy || !form.name.trim() || !form.unit.trim()}
+          className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          Simpan
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function RawMaterialTab({ canWrite, suppliers, rawMaterials, loading, onReload }) {
+  const [error, setError] = useState(null)
+  const [modal, setModal] = useState(null) // null | 'new' | rawMaterial object
+  const [busy, setBusy] = useState(false)
+
+  async function handleSubmit(form) {
+    setBusy(true)
+    setError(null)
+    try {
+      if (modal === 'new') await createRawMaterial(form)
+      else await updateRawMaterial(modal.id, form)
+      setModal(null)
+      onReload()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan bahan baku.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('Hapus bahan baku ini?')) return
+    setError(null)
+    try {
+      await deleteRawMaterial(id)
+      onReload()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menghapus bahan baku.'))
+    }
+  }
+
+  return (
+    <div>
+      <ErrorBanner message={error} />
+      {canWrite && (
+        <button
+          onClick={() => setModal('new')}
+          className="mb-4 rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
+        >
+          + Bahan Baku Baru
+        </button>
+      )}
+      <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] card-elevated">
+        {loading ? (
+          <p className="p-5 text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+        ) : rawMaterials.length === 0 ? (
+          <p className="p-5 text-sm text-[var(--color-ink-soft)]">Belum ada bahan baku.</p>
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] text-[var(--color-ink-soft)]">
+                <th className="px-5 py-2.5 font-medium">Nama</th>
+                <th className="px-5 py-2.5 font-medium">Satuan</th>
+                <th className="px-5 py-2.5 font-medium text-right">Harga/Unit</th>
+                <th className="px-5 py-2.5 font-medium text-right">Stok Toko</th>
+                <th className="px-5 py-2.5 font-medium text-right">Stok Gudang</th>
+                <th className="px-5 py-2.5 font-medium">Supplier</th>
+                {canWrite && <th className="px-5 py-2.5" />}
+              </tr>
+            </thead>
+            <tbody>
+              {rawMaterials.map((r) => (
+                <tr key={r.id} className="border-b border-[var(--color-border)] last:border-0">
+                  <td className="px-5 py-3 font-medium text-[var(--color-ink)]">{r.name}</td>
+                  <td className="px-5 py-3 text-[var(--color-ink-soft)]">{r.unit}</td>
+                  <td className="px-5 py-3 figure text-right">{formatRupiah(r.costPerUnit)}</td>
+                  <td className="px-5 py-3 figure text-right text-[var(--color-ink-soft)]">{r.stock}</td>
+                  <td className="px-5 py-3 figure text-right text-[var(--color-ink-soft)]">{r.stockGudang}</td>
+                  <td className="px-5 py-3 text-[var(--color-ink-soft)]">{r.supplier?.name || '—'}</td>
+                  {canWrite && (
+                    <td className="px-5 py-3 text-right">
+                      <button onClick={() => setModal(r)} className="mr-3 text-[var(--color-brand)] hover:underline">
+                        Edit
+                      </button>
+                      <button onClick={() => handleDelete(r.id)} className="text-[var(--color-danger)] hover:underline">
+                        Hapus
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {modal && (
+        <Modal title={modal === 'new' ? 'Bahan Baku Baru' : 'Edit Bahan Baku'} onClose={() => setModal(null)}>
+          <RawMaterialForm
+            initial={modal === 'new' ? null : modal}
+            suppliers={suppliers}
+            onSubmit={handleSubmit}
+            onClose={() => setModal(null)}
+            busy={busy}
+          />
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// MODAL RESEP (BOM) — dipakai dari tombol "Resep" di Tab Produk
+// ============================================================
+function RecipeModal({ product, rawMaterials, canWrite, onClose }) {
+  const [items, setItems] = useState([]) // [{ rawMaterialId, qty }]
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    fetchRecipe(product.id)
+      .then((data) => {
+        if (!active) return
+        setItems(data.map((it) => ({ rawMaterialId: it.rawMaterialId, qty: it.qty })))
+      })
+      .catch((err) => active && setError(errMsg(err, 'Gagal memuat resep.')))
+      .finally(() => active && setLoading(false))
+    return () => {
+      active = false
+    }
+  }, [product.id])
+
+  function addRow() {
+    setItems((prev) => [...prev, { rawMaterialId: '', qty: '' }])
+  }
+  function updateRow(idx, field, value) {
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
+  }
+  function removeRow(idx) {
+    setItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      const clean = items
+        .filter((it) => it.rawMaterialId && Number(it.qty) > 0)
+        .map((it) => ({ rawMaterialId: it.rawMaterialId, qty: Number(it.qty) }))
+      await saveRecipe(product.id, clean)
+      onClose()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan resep.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`Resep — ${product.name}`} onClose={onClose}>
+      <ErrorBanner message={error} />
+      {loading ? (
+        <p className="text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+      ) : (
+        <>
+          <p className="mb-3 text-xs text-[var(--color-ink-soft)]">
+            Bahan baku & jumlah yang dipakai untuk membuat 1 {product.unit} {product.name}. Modul Produksi menolak
+            membuat Work Order untuk produk yang belum punya resep.
+          </p>
+          {items.length === 0 && (
+            <p className="mb-3 text-sm text-[var(--color-ink-soft)]">Belum ada bahan baku di resep ini.</p>
+          )}
+          {items.map((it, idx) => {
+            const rm = rawMaterials.find((r) => r.id === it.rawMaterialId)
+            return (
+              <div key={idx} className="mb-2 flex items-center gap-2">
+                <select
+                  className={inputClass}
+                  value={it.rawMaterialId}
+                  disabled={!canWrite}
+                  onChange={(e) => updateRow(idx, 'rawMaterialId', e.target.value)}
+                >
+                  <option value="">— Pilih bahan baku —</option>
+                  {rawMaterials.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="Qty"
+                  className={inputClass + ' max-w-[6rem]'}
+                  value={it.qty}
+                  disabled={!canWrite}
+                  onChange={(e) => updateRow(idx, 'qty', e.target.value)}
+                />
+                <span className="w-10 shrink-0 text-xs text-[var(--color-ink-soft)]">{rm?.unit || ''}</span>
+                {canWrite && (
+                  <button type="button" onClick={() => removeRow(idx)} className="text-[var(--color-danger)] hover:underline">
+                    Hapus
+                  </button>
+                )}
+              </div>
+            )
+          })}
+          {canWrite && (
+            <button type="button" onClick={addRow} className="mt-1 text-sm text-[var(--color-brand)] hover:underline">
+              + Tambah bahan baku
+            </button>
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
+              {canWrite ? 'Batal' : 'Tutup'}
+            </button>
+            {canWrite && (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Simpan Resep
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </Modal>
+  )
+}
+
+// ============================================================
 // TAB PELANGGAN
 // ============================================================
 function CustomerForm({ initial, onSubmit, onClose, busy }) {
@@ -739,7 +1090,7 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
   )
 }
 
-function ProductTab({ canWrite, categories, suppliers }) {
+function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
   const [products, setProducts] = useState([])
   const [pagination, setPagination] = useState(null)
   const [page, setPage] = useState(1)
@@ -749,6 +1100,7 @@ function ProductTab({ canWrite, categories, suppliers }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [modal, setModal] = useState(null)
+  const [recipeProduct, setRecipeProduct] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -859,7 +1211,7 @@ function ProductTab({ canWrite, categories, suppliers }) {
                 <th className="px-5 py-2.5 font-medium text-right">Stok Toko</th>
                 <th className="px-5 py-2.5 font-medium text-right">Stok Gudang</th>
                 <th className="px-5 py-2.5 font-medium">Status</th>
-                {canWrite && <th className="px-5 py-2.5" />}
+                <th className="px-5 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -878,18 +1230,21 @@ function ProductTab({ canWrite, categories, suppliers }) {
                       {p.active ? 'Aktif' : 'Nonaktif'}
                     </span>
                   </td>
-                  {canWrite && (
-                    <td className="px-5 py-3 text-right">
+                  <td className="px-5 py-3 text-right">
+                    <button onClick={() => setRecipeProduct(p)} className="mr-3 text-[var(--color-brand)] hover:underline">
+                      Resep
+                    </button>
+                    {canWrite && (
                       <button onClick={() => setModal(p)} className="mr-3 text-[var(--color-brand)] hover:underline">
                         Edit
                       </button>
-                      {p.active && (
-                        <button onClick={() => handleDeactivate(p.id)} className="text-[var(--color-danger)] hover:underline">
-                          Nonaktifkan
-                        </button>
-                      )}
-                    </td>
-                  )}
+                    )}
+                    {canWrite && p.active && (
+                      <button onClick={() => handleDeactivate(p.id)} className="text-[var(--color-danger)] hover:underline">
+                        Nonaktifkan
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -921,6 +1276,14 @@ function ProductTab({ canWrite, categories, suppliers }) {
           />
         </Modal>
       )}
+      {recipeProduct && (
+        <RecipeModal
+          product={recipeProduct}
+          rawMaterials={rawMaterials}
+          canWrite={canWrite}
+          onClose={() => setRecipeProduct(null)}
+        />
+      )}
     </div>
   )
 }
@@ -934,6 +1297,8 @@ export default function MasterDataPage() {
   const [tab, setTab] = useState('kategori')
   const [categories, setCategories] = useState([])
   const [suppliers, setSuppliers] = useState([])
+  const [rawMaterials, setRawMaterials] = useState([])
+  const [rawMaterialsLoading, setRawMaterialsLoading] = useState(true)
 
   // Kategori & Supplier dimuat sekali di level halaman (dipakai lagi sebagai
   // dropdown di form Produk), bukan cuma di tab masing-masing.
@@ -941,6 +1306,20 @@ export default function MasterDataPage() {
     fetchCategories().then(setCategories).catch(() => {})
     fetchSuppliers().then(setSuppliers).catch(() => {})
   }, [tab === 'kategori' || tab === 'supplier' ? tab : null])
+
+  // Bahan Baku juga dimuat di level halaman — dipakai lagi sebagai dropdown
+  // di modal Resep (Tab Produk), bukan cuma di tab Bahan Baku sendiri.
+  const reloadRawMaterials = useCallback(() => {
+    setRawMaterialsLoading(true)
+    fetchRawMaterials()
+      .then(setRawMaterials)
+      .catch(() => {})
+      .finally(() => setRawMaterialsLoading(false))
+  }, [])
+
+  useEffect(() => {
+    reloadRawMaterials()
+  }, [reloadRawMaterials, tab === 'bahan-baku' || tab === 'produk' ? tab : null])
 
   return (
     <AppLayout title="Master Data">
@@ -962,7 +1341,18 @@ export default function MasterDataPage() {
 
       {tab === 'kategori' && <CategoryTab canWrite={isSuperAdmin} />}
       {tab === 'supplier' && <SupplierTab canWrite={isSuperAdmin} />}
-      {tab === 'produk' && <ProductTab canWrite={isSuperAdmin} categories={categories} suppliers={suppliers} />}
+      {tab === 'produk' && (
+        <ProductTab canWrite={isSuperAdmin} categories={categories} suppliers={suppliers} rawMaterials={rawMaterials} />
+      )}
+      {tab === 'bahan-baku' && (
+        <RawMaterialTab
+          canWrite={isSuperAdmin}
+          suppliers={suppliers}
+          rawMaterials={rawMaterials}
+          loading={rawMaterialsLoading}
+          onReload={reloadRawMaterials}
+        />
+      )}
       {tab === 'pelanggan' && <CustomerTab canWrite isSuperAdmin={isSuperAdmin} />}
     </AppLayout>
   )
