@@ -118,16 +118,26 @@ export default function Sidebar() {
   const items = NAV_ITEMS.filter((item) => item.roles.includes(role))
 
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col justify-between bg-[var(--color-brand)] text-white">
-      <div>
-        <div className="px-5 py-6">
-          <p className="font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight">
-            KASIR UMKM
-          </p>
-          <p className="mt-0.5 text-xs text-white/60">{user?.name ?? user?.username}</p>
-        </div>
+    // PATCH: sebelumnya "justify-between" + tanpa overflow-y-auto — kalau
+    // daftar menu (nav di bawah) lebih tinggi dari layar (makin sering
+    // terjadi karena menu terus bertambah), isinya meluber ke luar kotak
+    // h-screen ini tanpa latar belakang gelap mengikuti, jadi menu paling
+    // bawah kelihatan seperti pudar/putih (teks putih di atas latar putih
+    // halaman, bukan di atas latar gelap sidebar). Sekarang: header & tombol
+    // Keluar tetap diam (shrink-0), cuma <nav> yang scroll sendiri
+    // (flex-1 + overflow-y-auto), dan overflow-hidden di <aside> memastikan
+    // latar gelap selalu menutupi seluruh tinggi layar berapapun panjang
+    // menunya.
+    <aside className="flex h-screen w-60 shrink-0 flex-col overflow-hidden bg-[var(--color-brand)] text-white">
+      <div className="shrink-0 px-5 py-6">
+        <p className="font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight">
+          KASIR UMKM
+        </p>
+        <p className="mt-0.5 text-xs text-white/60">{user?.name ?? user?.username}</p>
+      </div>
 
-        <nav className="mt-2 flex flex-col gap-1 px-3">
+      <nav className="mt-2 flex-1 overflow-y-auto px-3 pb-2">
+        <div className="flex flex-col gap-1">
           {items.map((item) => (
             <NavLink
               key={item.to}
@@ -145,10 +155,10 @@ export default function Sidebar() {
               {item.label}
             </NavLink>
           ))}
-        </nav>
-      </div>
+        </div>
+      </nav>
 
-      <div className="border-t border-white/10 px-3 py-4">
+      <div className="shrink-0 border-t border-white/10 px-3 py-4">
         <span className="mb-2 block px-3 text-xs uppercase tracking-wide text-white/40">
           {role}
         </span>
