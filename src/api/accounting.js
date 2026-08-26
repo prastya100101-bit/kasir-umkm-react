@@ -11,6 +11,21 @@ export async function fetchChartOfAccounts() {
   return data
 }
 
+// POST /api/accounting/chart-of-accounts { code, name, type, normalBalance, parentId?, isGroup?, active? }
+// Hanya Super Admin. Dipakai form "Tambah Akun" di CoaTab.
+export async function createAccount(payload) {
+  const { data } = await apiClient.post('/api/accounting/chart-of-accounts', payload)
+  return data
+}
+
+// PUT /api/accounting/chart-of-accounts/:id { name?, type?, normalBalance?, parentId?, isGroup?, active? }
+// Kode akun (code) TIDAK BISA diubah lewat endpoint ini (dipakai sebagai
+// foreign key JournalLine.accountCode). Hanya Super Admin.
+export async function updateAccount(id, payload) {
+  const { data } = await apiClient.put(`/api/accounting/chart-of-accounts/${id}`, payload)
+  return data
+}
+
 export function flattenLeafAccounts(tree) {
   const out = []
   function walk(nodes) {
@@ -20,6 +35,21 @@ export function flattenLeafAccounts(tree) {
     }
   }
   walk(tree || [])
+  return out.sort((a, b) => a.code.localeCompare(b.code))
+}
+
+// Dipakai dropdown "Akun Induk" di form Tambah/Ubah Akun — hanya akun
+// Kelompok (isGroup:true) yang boleh jadi induk. depth dipakai untuk
+// indentasi visual di <select>.
+export function flattenGroupAccounts(tree) {
+  const out = []
+  function walk(nodes, depth) {
+    for (const node of nodes) {
+      if (node.isGroup) out.push({ ...node, depth })
+      if (node.children?.length) walk(node.children, depth + 1)
+    }
+  }
+  walk(tree || [], 0)
   return out.sort((a, b) => a.code.localeCompare(b.code))
 }
 

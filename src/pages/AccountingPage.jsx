@@ -4,6 +4,9 @@ import { useAuth } from '../context/AuthContext'
 import {
   fetchChartOfAccounts,
   flattenLeafAccounts,
+  flattenGroupAccounts,
+  createAccount,
+  updateAccount,
   fetchTrialBalance,
   fetchNeraca,
   fetchLabaRugi,
@@ -80,6 +83,32 @@ function ErrorBanner({ children }) {
   )
 }
 
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-[var(--color-surface)] p-6 shadow-lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold text-[var(--color-ink)]">
+            {title}
+          </h2>
+          <button onClick={onClose} className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+const ACCOUNT_TYPES = [
+  { value: 'aset', label: 'Aset' },
+  { value: 'kewajiban', label: 'Kewajiban' },
+  { value: 'modal', label: 'Modal' },
+  { value: 'pendapatan', label: 'Pendapatan' },
+  { value: 'beban', label: 'Beban' },
+]
+
 function num(v) {
   return Number(v ?? 0)
 }
@@ -116,7 +145,7 @@ function AmountCell({ value, positiveGood = true }) {
 // ============================================================
 // TAB: BAGAN AKUN (Chart of Accounts) — pohon read-only
 // ============================================================
-function CoaRow({ node, depth }) {
+function CoaRow({ node, depth, onEdit }) {
   return (
     <>
       <tr className="border-b border-[var(--color-border)] last:border-0">
@@ -126,7 +155,7 @@ function CoaRow({ node, depth }) {
         <td className={`py-2 pr-3 ${node.isGroup ? 'font-semibold' : ''}`}>{node.name}</td>
         <td className="py-2 pr-3 text-xs uppercase text-[var(--color-ink-soft)]">{node.type}</td>
         <td className="py-2 pr-3 text-xs">{node.normalBalance}</td>
-        <td className="py-2 text-xs">
+        <td className="py-2 pr-3 text-xs">
           {node.isGroup ? (
             <span className="rounded-full bg-[var(--color-canvas)] px-2 py-0.5">Kelompok</span>
           ) : node.active ? (
@@ -135,41 +164,231 @@ function CoaRow({ node, depth }) {
             <span className="rounded-full bg-[var(--color-danger-tint)] px-2 py-0.5 text-[var(--color-danger)]">Nonaktif</span>
           )}
         </td>
+        <td className="py-2 text-right text-xs">
+          <button
+            onClick={() => onEdit(node)}
+            className="rounded-md px-2 py-1 text-[var(--color-brand)] hover:bg-[var(--color-canvas)]"
+          >
+            Ubah
+          </button>
+        </td>
       </tr>
       {node.children?.map((child) => (
-        <CoaRow key={child.id} node={child} depth={depth + 1} />
+        <CoaRow key={child.id} node={child} depth={depth + 1} onEdit={onEdit} />
       ))}
     </>
   )
 }
 
-function CoaTab({ tree, loading }) {
-  if (loading) return <Skeleton />
-  if (!tree.length) return <Empty text="Belum ada akun." />
+// ============================================================
+// FORM: Tambah / Ubah Akun (dipakai CoaTab)
+// ============================================================
+function AccountFormModal({ tree, editing, onClose, onSaved }) {
+  const isEdit = !!editing
+  const groupOptions = useMemo(() => flattenGroupAccounts(tree), [tree])
+
+  const [form, setForm] = useState(() => ({
+    code: editing?.code || '',
+    name: editing?.name || '',
+    type: editing?.type || 'aset',
+    normalBalance: editing?.normalBalance || 'debit',
+    parentId: editing?.parentId || '',
+    isGroup: editing?.isGroup ?? false,
+    active: editing?.active ?? true,
+  }))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  // Cegah pilih diri sendiri (atau, sederhananya, saat edit cukup exclude
+  // akun ini sendiri dari daftar pilihan induk — validasi siklus lebih
+  // dalam tetap dijaga di backend).
+  const parentChoices = groupOptions.filter((g) => !editing || g.id !== editing.id)
+
+  function update(field, value) {
+    setForm((f) => ({ ...f, [field]: value }))
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setError('')
+    setSaving(true)
+    try {
+      if (isEdit) {
+        await updateAccount(editing.id, {
+          name: form.name,
+          type: form.type,
+          normalBalance: form.normalBalance,
+          parentId: form.parentId || null,
+          isGroup: form.isGroup,
+          active: form.active,
+        })
+      } else {
+        await createAccount({
+          code: form.code,
+          name: form.name,
+          type: form.type,
+          normalBalance: form.normalBalance,
+          parentId: form.parentId || null,
+          isGroup: form.isGroup,
+          active: form.active,
+        })
+      }
+      onSaved()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan akun'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <Card title="Bagan Akun (Chart of Accounts)">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-ink-soft)]">
-              <th className="pb-2 pr-3">Kode</th>
-              <th className="pb-2 pr-3">Nama Akun</th>
-              <th className="pb-2 pr-3">Tipe</th>
-              <th className="pb-2 pr-3">Normal</th>
-              <th className="pb-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tree.map((root) => (
-              <CoaRow key={root.id} node={root} depth={0} />
+    <Modal title={isEdit ? `Ubah Akun — ${editing.code}` : 'Tambah Akun Baru'} onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <ErrorBanner>{error}</ErrorBanner>
+
+        <Field label="Kode Akun" hint={isEdit ? 'Kode akun tidak bisa diubah setelah dibuat.' : 'Contoh: 1104, 5203'}>
+          <input
+            className={inputClass}
+            value={form.code}
+            disabled={isEdit}
+            onChange={(e) => update('code', e.target.value)}
+            placeholder="mis. 1104"
+            required
+          />
+        </Field>
+
+        <Field label="Nama Akun">
+          <input
+            className={inputClass}
+            value={form.name}
+            onChange={(e) => update('name', e.target.value)}
+            placeholder="mis. Persediaan Bahan Baku"
+            required
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Tipe">
+            <select className={inputClass} value={form.type} onChange={(e) => update('type', e.target.value)}>
+              {ACCOUNT_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Saldo Normal">
+            <select
+              className={inputClass}
+              value={form.normalBalance}
+              onChange={(e) => update('normalBalance', e.target.value)}
+            >
+              <option value="debit">Debit</option>
+              <option value="kredit">Kredit</option>
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Akun Induk (opsional)" hint="Kosongkan kalau ini akun tingkat teratas. Hanya akun berstatus Kelompok yang bisa dipilih.">
+          <select className={inputClass} value={form.parentId} onChange={(e) => update('parentId', e.target.value)}>
+            <option value="">— Tidak ada (akun teratas) —</option>
+            {parentChoices.map((g) => (
+              <option key={g.id} value={g.id}>
+                {'\u00A0\u00A0'.repeat(g.depth)}{g.code} — {g.name}
+              </option>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </select>
+        </Field>
+
+        <div className="mb-3 flex items-center gap-6">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.isGroup} onChange={(e) => update('isGroup', e.target.checked)} />
+            Akun Kelompok (header, tidak diposting jurnal langsung)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.active} onChange={(e) => update('active', e.target.checked)} />
+            Aktif
+          </label>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]"
+          >
+            Batal
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {saving ? 'Menyimpan...' : isEdit ? 'Simpan Perubahan' : 'Tambah Akun'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function CoaTab({ tree, loading, onSaved }) {
+  const [formState, setFormState] = useState(null) // null | 'new' | account object
+
+  if (loading) return <Skeleton />
+
+  return (
+    <Card
+      title="Bagan Akun (Chart of Accounts)"
+      right={
+        <button
+          onClick={() => setFormState('new')}
+          className="rounded-md bg-[var(--color-brand)] px-3 py-1.5 text-sm font-medium text-white"
+        >
+          + Tambah Akun
+        </button>
+      }
+    >
+      {!tree.length ? (
+        <Empty text="Belum ada akun. Klik “+ Tambah Akun” untuk membuat akun pertama." />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-ink-soft)]">
+                <th className="pb-2 pr-3">Kode</th>
+                <th className="pb-2 pr-3">Nama Akun</th>
+                <th className="pb-2 pr-3">Tipe</th>
+                <th className="pb-2 pr-3">Normal</th>
+                <th className="pb-2 pr-3">Status</th>
+                <th className="pb-2 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tree.map((root) => (
+                <CoaRow key={root.id} node={root} depth={0} onEdit={setFormState} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <p className="mt-3 text-xs text-[var(--color-ink-soft)]">
-        Data referensi — dipakai modul lain untuk dropdown akun. Belum ada endpoint backend untuk
-        tambah/ubah/hapus akun lewat halaman ini (CoA dikelola langsung lewat seed/migration).
+        Akun baru langsung dipakai modul lain (dropdown akun di Jurnal Manual, Kebijakan &amp; Saldo Awal,
+        dll). Kode akun tidak bisa diubah setelah dibuat — kalau salah ketik, buat akun baru lalu nonaktifkan
+        yang lama.
       </p>
+
+      {formState && (
+        <AccountFormModal
+          tree={tree}
+          editing={formState === 'new' ? null : formState}
+          onClose={() => setFormState(null)}
+          onSaved={() => {
+            setFormState(null)
+            onSaved()
+          }}
+        />
+      )}
     </Card>
   )
 }
@@ -1437,13 +1656,17 @@ export default function AccountingPage() {
     document.title = 'Akuntansi — KASIR UMKM'
   }, [])
 
-  useEffect(() => {
+  const loadCoa = useCallback(() => {
     setCoaLoading(true)
-    fetchChartOfAccounts()
+    return fetchChartOfAccounts()
       .then(setCoaTree)
       .catch(() => setCoaTree([]))
       .finally(() => setCoaLoading(false))
   }, [])
+
+  useEffect(() => {
+    loadCoa()
+  }, [loadCoa])
 
   const accounts = useMemo(() => flattenLeafAccounts(coaTree), [coaTree])
 
@@ -1473,7 +1696,7 @@ export default function AccountingPage() {
         ))}
       </div>
 
-      {tab === 'coa' && <CoaTab tree={coaTree} loading={coaLoading} />}
+      {tab === 'coa' && <CoaTab tree={coaTree} loading={coaLoading} onSaved={loadCoa} />}
       {tab === 'buku-besar' && <BukuBesarTab accounts={accounts} />}
       {tab === 'neraca' && <NeracaTab />}
       {tab === 'laba-rugi' && <LabaRugiTab />}
