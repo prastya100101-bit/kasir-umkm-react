@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { useAuth, ROLES } from '../context/AuthContext'
+import { useLocationStore } from '../store/useLocationStore'
 import { formatRupiah } from '../utils/format'
 import {
   fetchCategories,
@@ -1580,6 +1581,9 @@ function SubCabangForm({ initial, cabangOptions, defaultCabangId, onSubmit, onCl
 }
 
 function CabangTab({ canWrite }) {
+  // Dipakai supaya LocationSwitcher di header ikut fetch ulang setelah
+  // Cabang/SubCabang berubah di sini — lihat markStale() di useLocationStore.
+  const markLocationsStale = useLocationStore((s) => s.markStale)
   const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -1616,6 +1620,7 @@ function CabangTab({ canWrite }) {
       await createCabang({ name: form.name.trim() })
       setShowCabangForm(false)
       load()
+      markLocationsStale()
     } catch (err) {
       setError(errMsg(err, 'Gagal menambah cabang.'))
     } finally {
@@ -1630,6 +1635,7 @@ function CabangTab({ canWrite }) {
       await updateCabang(editingCabang.id, { name: form.name.trim(), active: form.active })
       setEditingCabang(null)
       load()
+      markLocationsStale()
     } catch (err) {
       setError(errMsg(err, 'Gagal menyimpan perubahan cabang.'))
     } finally {
@@ -1644,6 +1650,7 @@ function CabangTab({ canWrite }) {
       await createSubCabang({ name: form.name.trim(), cabangId: form.cabangId, isProductionHub: form.isProductionHub })
       setSubCabangFormFor(null)
       load()
+      markLocationsStale()
     } catch (err) {
       setError(errMsg(err, 'Gagal menambah sub cabang.'))
     } finally {
@@ -1663,6 +1670,7 @@ function CabangTab({ canWrite }) {
       })
       setEditingSubCabang(null)
       load()
+      markLocationsStale()
     } catch (err) {
       setError(errMsg(err, 'Gagal menyimpan perubahan sub cabang.'))
     } finally {

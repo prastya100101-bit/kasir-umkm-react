@@ -20,6 +20,11 @@ export const useLocationStore = create(
       setActiveLocation: (location) => set({ activeLocation: location }),
       setAvailableLocations: (locations) => set({ availableLocations: locations, hasLoaded: true }),
       setLoading: (isLoading) => set({ isLoading }),
+      // Tandai daftar lokasi basi tanpa membuang activeLocation yang sedang
+      // dipilih user — dipakai setelah create/update Cabang & SubCabang di
+      // Master Data (CabangTab), supaya LocationSwitcher di header ikut
+      // fetch ulang tanpa perlu reload halaman penuh.
+      markStale: () => set({ hasLoaded: false }),
       clearLocation: () =>
         set({ activeLocation: null, availableLocations: [], isLoading: false, hasLoaded: false }),
     }),
