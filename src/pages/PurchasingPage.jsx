@@ -16,8 +16,8 @@ import {
 import { formatRupiah } from '../utils/format'
 
 const TABS = [
-  { id: 'po', label: 'Purchase Order' },
-  { id: 'utang', label: 'Utang Supplier' },
+  { id: 'po', label: 'Purchase Order', icon: '🧾' },
+  { id: 'utang', label: 'Utang Supplier', icon: '💳' },
 ]
 
 const APPROVAL_FILTERS = [
@@ -28,11 +28,11 @@ const APPROVAL_FILTERS = [
   { id: 'not_required', label: 'Tanpa Approval' },
 ]
 
-const APPROVAL_TONE = {
-  pending: 'text-[var(--color-warning)]',
-  approved: 'text-[var(--color-brand)]',
-  rejected: 'text-[var(--color-danger)]',
-  not_required: 'text-[var(--color-ink-soft)]',
+const APPROVAL_BADGE_TONE = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+  not_required: 'neutral',
 }
 
 const APPROVAL_LABEL = {
@@ -61,6 +61,39 @@ function Field({ label, children, hint }) {
 
 function fmtDate(d) {
   return new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// ---------------- Badge status (pill berwarna, ganti teks polos) ----------------
+
+const BADGE_TONE_CLASS = {
+  success: 'bg-[var(--color-success-tint)] text-[var(--color-success)]',
+  danger: 'bg-[var(--color-danger-tint)] text-[var(--color-danger)]',
+  warning: 'bg-[var(--color-warning-tint)] text-[var(--color-warning)]',
+  neutral: 'bg-[var(--color-canvas)] text-[var(--color-ink-soft)]',
+}
+
+function StatusBadge({ label, tone = 'neutral' }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${BADGE_TONE_CLASS[tone]}`}>
+      {label}
+    </span>
+  )
+}
+
+// ---------------- Kartu ringkasan (overview sekilas di atas tabel) ----------------
+
+function StatCard({ icon, label, value, tone = 'neutral' }) {
+  return (
+    <div className="card-elevated flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${BADGE_TONE_CLASS[tone]}`}>
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs text-[var(--color-ink-soft)]">{label}</p>
+        <p className="figure truncate text-base font-semibold text-[var(--color-ink)]">{value}</p>
+      </div>
+    </div>
+  )
 }
 
 // ============================================================
@@ -206,7 +239,7 @@ function ItemLineForm({ onAdd }) {
 // ============================================================
 // FORM BUAT PO
 // ============================================================
-function PurchaseForm({ suppliers, subCabangOptions, defaultSubCabangId, isSuperAdmin, onCreated }) {
+function PurchaseForm({ suppliers, subCabangOptions, defaultSubCabangId, isSuperAdmin, onCreated, onCancel }) {
   const [supplierId, setSupplierId] = useState('')
   const [items, setItems] = useState([])
   const [statusBayar, setStatusBayar] = useState('lunas')
@@ -236,6 +269,7 @@ function PurchaseForm({ suppliers, subCabangOptions, defaultSubCabangId, isSuper
       setItems([])
       setStatusBayar('lunas')
       onCreated()
+      onCancel?.()
     } catch (err) {
       setError(errMsg(err, 'Gagal membuat Purchase Order.'))
     } finally {
@@ -248,8 +282,13 @@ function PurchaseForm({ suppliers, subCabangOptions, defaultSubCabangId, isSuper
       onSubmit={handleSubmit}
       className="card-elevated mb-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
     >
-      <h2 className="mb-4 font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-ink)]">
-        Buat Purchase Order Baru
+      <h2 className="mb-4 flex items-center justify-between font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-ink)]">
+        <span>📝 Buat Purchase Order Baru</span>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className="text-sm font-normal text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
+            Tutup ✕
+          </button>
+        )}
       </h2>
 
       {error && (
@@ -396,19 +435,25 @@ function PurchaseRow({ po, isSuperAdmin, onChanged }) {
   const canReceive = isSuperAdmin && po.approvalStatus !== 'pending' && po.approvalStatus !== 'rejected' && po.status !== 'diterima'
 
   return (
-    <tr className="border-b border-[var(--color-border)] last:border-0">
+    <tr className="border-b border-[var(--color-border)] transition-colors last:border-0 hover:bg-[var(--color-canvas)]">
       <td className="px-5 py-3 font-medium text-[var(--color-ink)]">{po.code}</td>
       <td className="px-5 py-3 text-[var(--color-ink-soft)]">{po.supplier?.name ?? '—'}</td>
       <td className="px-5 py-3 text-[var(--color-ink-soft)]">{fmtDate(po.date)}</td>
       <td className="px-5 py-3 text-right figure">{formatRupiah(po.total)}</td>
-      <td className="px-5 py-3 text-[var(--color-ink-soft)]">
-        {po.supplierDebt ? (po.supplierDebt.status === 'lunas' ? 'Lunas' : 'Belum lunas') : 'Lunas'}
+      <td className="px-5 py-3">
+        {po.supplierDebt ? (
+          <StatusBadge label={po.supplierDebt.status === 'lunas' ? 'Lunas' : 'Belum lunas'} tone={po.supplierDebt.status === 'lunas' ? 'success' : 'warning'} />
+        ) : (
+          <StatusBadge label="Lunas" tone="success" />
+        )}
       </td>
-      <td className="px-5 py-3 text-[var(--color-ink-soft)] capitalize">{po.status}</td>
-      <td className={`px-5 py-3 font-medium ${APPROVAL_TONE[po.approvalStatus] || ''}`}>
-        {APPROVAL_LABEL[po.approvalStatus] || po.approvalStatus}
+      <td className="px-5 py-3">
+        <StatusBadge label={po.status === 'diterima' ? 'Diterima' : 'Menunggu diterima'} tone={po.status === 'diterima' ? 'success' : 'neutral'} />
+      </td>
+      <td className="px-5 py-3">
+        <StatusBadge label={APPROVAL_LABEL[po.approvalStatus] || po.approvalStatus} tone={APPROVAL_BADGE_TONE[po.approvalStatus] || 'neutral'} />
         {po.approvalStatus === 'rejected' && po.rejectionReason && (
-          <p className="mt-0.5 text-xs font-normal text-[var(--color-ink-soft)]">{po.rejectionReason}</p>
+          <p className="mt-1 text-xs font-normal text-[var(--color-ink-soft)]">{po.rejectionReason}</p>
         )}
       </td>
       <td className="px-5 py-3 text-right">
@@ -454,6 +499,7 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
   const [approvalStatus, setApprovalStatus] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [showForm, setShowForm] = useState(false)
 
   const load = useCallback((s) => {
     setIsLoading(true)
@@ -468,31 +514,56 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
     load(approvalStatus)
   }, [load, approvalStatus])
 
+  const list = purchases || []
+  const totalNilai = list.reduce((a, p) => a + Number(p.total), 0)
+  const pendingCount = list.filter((p) => p.approvalStatus === 'pending').length
+  const belumDiterimaCount = list.filter((p) => p.status !== 'diterima').length
+
   return (
     <>
-      <PurchaseForm
-        suppliers={suppliers}
-        subCabangOptions={subCabangOptions}
-        defaultSubCabangId={defaultSubCabangId}
-        isSuperAdmin={isSuperAdmin}
-        onCreated={() => load(approvalStatus)}
-      />
-
-      <div className="mb-3 flex gap-1 rounded-md border border-[var(--color-border)] p-1 text-sm w-fit">
-        {APPROVAL_FILTERS.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setApprovalStatus(f.id)}
-            className={`rounded px-3 py-1 font-medium transition-colors ${
-              approvalStatus === f.id
-                ? 'bg-[var(--color-brand)] text-white'
-                : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard icon="🧾" label="PO Ditampilkan" value={`${list.length} PO`} />
+        <StatCard icon="💰" label="Total Nilai" value={formatRupiah(totalNilai)} />
+        <StatCard icon="⏳" label="Menunggu Persetujuan" value={`${pendingCount} PO`} tone={pendingCount > 0 ? 'warning' : 'neutral'} />
       </div>
+
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-sm w-fit">
+          {APPROVAL_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setApprovalStatus(f.id)}
+              className={`rounded px-3 py-1 font-medium transition-colors ${
+                approvalStatus === f.id
+                  ? 'bg-[var(--color-brand)] text-white'
+                  : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            + Buat PO Baru
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <PurchaseForm
+          suppliers={suppliers}
+          subCabangOptions={subCabangOptions}
+          defaultSubCabangId={defaultSubCabangId}
+          isSuperAdmin={isSuperAdmin}
+          onCreated={() => load(approvalStatus)}
+          onCancel={() => setShowForm(false)}
+        />
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">
@@ -615,15 +686,15 @@ function DebtRow({ debt, isSuperAdmin, cashAccounts, onChanged }) {
   const sisa = Number(debt.total) - Number(debt.terbayar)
 
   return (
-    <tr className="border-b border-[var(--color-border)] last:border-0 align-top">
+    <tr className="border-b border-[var(--color-border)] align-top transition-colors last:border-0 hover:bg-[var(--color-canvas)]">
       <td className="px-5 py-3 font-medium text-[var(--color-ink)]">{debt.purchaseCode}</td>
       <td className="px-5 py-3 text-[var(--color-ink-soft)]">{debt.supplier?.name ?? '—'}</td>
       <td className="px-5 py-3 text-[var(--color-ink-soft)]">{fmtDate(debt.tanggal)}</td>
       <td className="px-5 py-3 text-right figure">{formatRupiah(debt.total)}</td>
       <td className="px-5 py-3 text-right figure">{formatRupiah(debt.terbayar)}</td>
       <td className="px-5 py-3 text-right figure font-medium">{formatRupiah(sisa)}</td>
-      <td className={`px-5 py-3 font-medium ${debt.status === 'lunas' ? 'text-[var(--color-brand)]' : 'text-[var(--color-warning)]'}`}>
-        {debt.status === 'lunas' ? 'Lunas' : 'Belum lunas'}
+      <td className="px-5 py-3">
+        <StatusBadge label={debt.status === 'lunas' ? 'Lunas' : 'Belum lunas'} tone={debt.status === 'lunas' ? 'success' : 'warning'} />
       </td>
       <td className="px-5 py-3 text-right">
         {isSuperAdmin && debt.status !== 'lunas' && (
@@ -681,8 +752,19 @@ function DebtTab({ isSuperAdmin }) {
     { id: 'lunas', label: 'Lunas' },
   ]
 
+  const list = debts || []
+  const totalSisa = list.reduce((a, d) => a + (Number(d.total) - Number(d.terbayar)), 0)
+  const belumLunasCount = list.filter((d) => d.status !== 'lunas').length
+  const supplierCount = new Set(list.filter((d) => d.status !== 'lunas').map((d) => d.supplier?.id)).size
+
   return (
     <>
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard icon="💳" label="Total Sisa Utang" value={formatRupiah(totalSisa)} tone={totalSisa > 0 ? 'warning' : 'success'} />
+        <StatCard icon="🏷️" label="PO Belum Lunas" value={`${belumLunasCount} PO`} />
+        <StatCard icon="🏬" label="Supplier Berutang" value={`${supplierCount} supplier`} />
+      </div>
+
       <div className="mb-3 flex gap-1 rounded-md border border-[var(--color-border)] p-1 text-sm w-fit">
         {DEBT_FILTERS.map((f) => (
           <button
@@ -785,7 +867,7 @@ export default function PurchasingPage() {
                 : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
             }`}
           >
-            {t.label}
+            {t.icon} {t.label}
           </button>
         ))}
       </div>
