@@ -25,21 +25,28 @@ const TABS = [
   { id: 'location', label: 'Margin Realisasi per Lokasi' },
 ]
 
-function SummaryCard({ label, value, tone, active, onClick }) {
+function SummaryCard({ icon, label, value, tone, active, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border p-4 text-left transition ${
+      className={`flex items-center gap-3 rounded-lg border p-4 text-left transition ${
         active
           ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
           : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-brand)]/50'
       }`}
     >
-      <p className="text-xs text-[var(--color-ink-soft)]">{label}</p>
-      <p className={`mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold ${tone || ''}`}>
-        {value}
-      </p>
+      {icon && (
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">
+          {icon}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-xs text-[var(--color-ink-soft)]">{label}</p>
+        <p className={`mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold ${tone || ''}`}>
+          {value}
+        </p>
+      </div>
     </button>
   )
 }
@@ -252,6 +259,7 @@ export default function PriceAnalysisPage() {
         {report && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <SummaryCard
+              icon="📉"
               label="Margin Tipis"
               value={report.summary.marginTipis}
               tone="text-[var(--color-warning)]"
@@ -259,12 +267,14 @@ export default function PriceAnalysisPage() {
               onClick={() => setTab('suggestion')}
             />
             <SummaryCard
+              icon="🐢"
               label="Slow-Moving"
               value={report.summary.slowMoving}
               active={tab === 'slow'}
               onClick={() => setTab('slow')}
             />
             <SummaryCard
+              icon="↩️"
               label="Retur Tinggi"
               value={report.summary.returTinggi}
               tone="text-[var(--color-danger)]"

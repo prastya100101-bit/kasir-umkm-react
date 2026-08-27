@@ -153,26 +153,30 @@ function buildSuperAdminCards({ trend, locationCount, alertCount, kasbonSummary 
   const avgTrx = todayB.count ? todayB.omzet / todayB.count : 0
   return [
     {
+      icon: '💰',
       label: 'Total Omzet Hari Ini',
       value: formatRupiah(todayB.omzet),
       delta: percentDelta(todayB.omzet, yestB?.omzet),
       tone: 'brand',
     },
     {
+      icon: '🧾',
       label: 'Transaksi Hari Ini',
       value: String(todayB.count),
       delta: percentDelta(todayB.count, yestB?.count),
       tone: 'brand',
     },
-    { label: 'Rata-rata / Transaksi', value: formatRupiah(avgTrx), tone: 'brand' },
-    { label: 'Lokasi Aktif', value: String(locationCount), tone: 'brand' },
+    { icon: '📊', label: 'Rata-rata / Transaksi', value: formatRupiah(avgTrx), tone: 'brand' },
+    { icon: '🏬', label: 'Lokasi Aktif', value: String(locationCount), tone: 'brand' },
     {
+      icon: '📒',
       label: 'Piutang Kasbon Belum Lunas',
       value: formatRupiah(kasbonSummary.total),
       subvalue: `${kasbonSummary.count} transaksi`,
       tone: kasbonSummary.count ? 'warning' : 'brand',
     },
     {
+      icon: '⚠️',
       label: 'Alert Rekonsiliasi',
       value: alertCount === null ? '—' : String(alertCount),
       tone: alertCount ? 'warning' : 'success',
@@ -194,29 +198,34 @@ function buildManagerCards({ trend, reconciliation, filterIds, kasbonSummary }) 
 
   return [
     {
+      icon: '💰',
       label: 'Omzet Lokasi Hari Ini',
       value: formatRupiah(todayB.omzet),
       delta: percentDelta(todayB.omzet, yestB?.omzet),
       tone: 'brand',
     },
     {
+      icon: '🧾',
       label: 'Transaksi Hari Ini',
       value: String(todayB.count),
       delta: percentDelta(todayB.count, yestB?.count),
       tone: 'brand',
     },
-    { label: 'Rata-rata / Transaksi', value: formatRupiah(avgTrx), tone: 'brand' },
+    { icon: '📊', label: 'Rata-rata / Transaksi', value: formatRupiah(avgTrx), tone: 'brand' },
     {
+      icon: '🏦',
       label: 'Kas Belum Disetor',
       value: formatRupiah(kasBelumDisetorTotal),
       tone: kasBelumDisetorTotal ? 'warning' : 'success',
     },
     {
+      icon: '🔁',
       label: 'Transfer Menunggu',
       value: transferMenungguCount === null ? '—' : String(transferMenungguCount),
       tone: transferMenungguCount ? 'warning' : 'success',
     },
     {
+      icon: '📒',
       label: 'Piutang Kasbon Belum Lunas',
       value: formatRupiah(kasbonSummary.total),
       subvalue: `${kasbonSummary.count} transaksi`,
@@ -239,14 +248,15 @@ function buildKasirCards({ dashboardData, trend }) {
   const avgTrx = transaksiHariIni ? omzetShift / transaksiHariIni : 0
 
   return [
-    { label: 'Transaksi Shift Ini', value: String(transaksiHariIni), tone: 'brand' },
-    { label: 'Omzet Shift Ini', value: formatRupiah(omzetShift), tone: 'brand' },
+    { icon: '🧾', label: 'Transaksi Shift Ini', value: String(transaksiHariIni), tone: 'brand' },
+    { icon: '💰', label: 'Omzet Shift Ini', value: formatRupiah(omzetShift), tone: 'brand' },
     {
+      icon: '🗄️',
       label: 'Kas di Laci',
       value: activeShift ? formatRupiah(kasDiLaci) : 'Shift belum dibuka',
       tone: 'brand',
     },
-    { label: 'Rata-rata / Transaksi', value: formatRupiah(avgTrx), tone: 'brand' },
+    { icon: '📊', label: 'Rata-rata / Transaksi', value: formatRupiah(avgTrx), tone: 'brand' },
   ]
 }
 
@@ -269,6 +279,12 @@ function DeltaBadge({ delta }) {
 }
 
 function KpiCard({ card }) {
+  const iconTone =
+    card.tone === 'warning'
+      ? 'bg-amber-50 text-amber-600'
+      : card.tone === 'success'
+        ? 'bg-green-50 text-green-600'
+        : 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]'
   return (
     <div className="card-elevated relative overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
       <div
@@ -280,12 +296,21 @@ function KpiCard({ card }) {
               : 'bg-[var(--color-accent)]'
         }`}
       />
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-[var(--color-ink-soft)]">{card.label}</p>
-        {card.delta !== undefined && <DeltaBadge delta={card.delta} />}
+      <div className="flex items-start gap-3">
+        {card.icon && (
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${iconTone}`}>
+            {card.icon}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-[var(--color-ink-soft)]">{card.label}</p>
+            {card.delta !== undefined && <DeltaBadge delta={card.delta} />}
+          </div>
+          <p className={`figure mt-2 text-2xl font-semibold ${TONE_CLASS[card.tone]}`}>{card.value}</p>
+          {card.subvalue && <p className="mt-1 text-xs text-[var(--color-ink-soft)]">{card.subvalue}</p>}
+        </div>
       </div>
-      <p className={`figure mt-2 text-2xl font-semibold ${TONE_CLASS[card.tone]}`}>{card.value}</p>
-      {card.subvalue && <p className="mt-1 text-xs text-[var(--color-ink-soft)]">{card.subvalue}</p>}
     </div>
   )
 }

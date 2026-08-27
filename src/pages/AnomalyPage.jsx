@@ -53,19 +53,26 @@ const TYPE_FILTERS = [
   ...Object.entries(TYPE_LABELS).map(([id, label]) => ({ id, label })),
 ]
 
-function SummaryCard({ label, value, tone, active, onClick }) {
+function SummaryCard({ icon, label, value, tone, active, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border p-4 text-left transition ${
+      className={`flex items-center gap-3 rounded-lg border p-4 text-left transition ${
         active
           ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
           : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-brand)]/50'
       }`}
     >
-      <p className="text-xs text-[var(--color-ink-soft)]">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${tone || ''}`}>{value}</p>
+      {icon && (
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">
+          {icon}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-xs text-[var(--color-ink-soft)]">{label}</p>
+        <p className={`mt-1 text-2xl font-semibold ${tone || ''}`}>{value}</p>
+      </div>
     </button>
   )
 }
@@ -278,12 +285,14 @@ export default function AnomalyPage() {
         {report && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <SummaryCard
+              icon="🚨"
               label="Total Anomali"
               value={report.total}
               active={!severityFilter}
               onClick={() => setSeverityFilter('')}
             />
             <SummaryCard
+              icon="🔴"
               label="Tinggi"
               value={report.severityCount.tinggi || 0}
               tone="text-[var(--color-danger)]"
@@ -291,6 +300,7 @@ export default function AnomalyPage() {
               onClick={() => setSeverityFilter('tinggi')}
             />
             <SummaryCard
+              icon="🟠"
               label="Sedang"
               value={report.severityCount.sedang || 0}
               tone="text-[var(--color-warning)]"
@@ -298,6 +308,7 @@ export default function AnomalyPage() {
               onClick={() => setSeverityFilter('sedang')}
             />
             <SummaryCard
+              icon="🟢"
               label="Rendah"
               value={report.severityCount.rendah || 0}
               tone="text-[var(--color-ink-soft)]"

@@ -39,21 +39,28 @@ const TYPE_FILTERS = [
   { id: 'bahan', label: 'Bahan Baku' },
 ]
 
-function SummaryCard({ label, value, tone, active, onClick }) {
+function SummaryCard({ icon, label, value, tone, active, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border p-4 text-left transition ${
+      className={`flex items-center gap-3 rounded-lg border p-4 text-left transition ${
         active
           ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
           : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-brand)]/50'
       }`}
     >
-      <p className="text-xs text-[var(--color-ink-soft)]">{label}</p>
-      <p className={`mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold ${tone || ''}`}>
-        {value}
-      </p>
+      {icon && (
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">
+          {icon}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-xs text-[var(--color-ink-soft)]">{label}</p>
+        <p className={`mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold ${tone || ''}`}>
+          {value}
+        </p>
+      </div>
     </button>
   )
 }
@@ -266,6 +273,7 @@ export default function StockPredictionPage() {
         {report && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <SummaryCard
+              icon="🚨"
               label="Kritis"
               value={report.summary.kritis}
               tone="text-[var(--color-danger)]"
@@ -273,6 +281,7 @@ export default function StockPredictionPage() {
               onClick={() => setStatusFilter(statusFilter === 'kritis' ? '' : 'kritis')}
             />
             <SummaryCard
+              icon="📦"
               label="Perlu Restock"
               value={report.summary.perlu_restock}
               tone="text-[var(--color-warning)]"
@@ -280,12 +289,14 @@ export default function StockPredictionPage() {
               onClick={() => setStatusFilter(statusFilter === 'perlu_restock' ? '' : 'perlu_restock')}
             />
             <SummaryCard
+              icon="🔍"
               label="Cek Manual"
               value={report.summary.cek_manual}
               active={statusFilter === 'cek_manual'}
               onClick={() => setStatusFilter(statusFilter === 'cek_manual' ? '' : 'cek_manual')}
             />
             <SummaryCard
+              icon="✅"
               label="Aman"
               value={report.summary.aman}
               tone="text-[var(--color-success)]"

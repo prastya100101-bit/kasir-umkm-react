@@ -731,17 +731,30 @@ function reasonLabel(reason) {
 
 // Kartu ringkasan kecil dipakai berulang di beberapa panel Keamanan —
 // prinsip produk "informatif": kartu ringkasan sebelum tabel detail.
-function StatCard({ label, value, tone = 'neutral' }) {
+function StatCard({ icon, label, value, tone = 'neutral' }) {
   const tones = {
     neutral: 'text-[var(--color-ink)]',
     green: 'text-[var(--color-success,#16a34a)]',
     red: 'text-[var(--color-danger)]',
     amber: 'text-amber-600',
   }
+  const iconTones = {
+    neutral: 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]',
+    green: 'bg-green-50 text-green-600',
+    red: 'bg-red-50 text-red-600',
+    amber: 'bg-amber-50 text-amber-600',
+  }
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
-      <p className="text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${tones[tone] || tones.neutral}`}>{value}</p>
+    <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+      {icon && (
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${iconTones[tone] || iconTones.neutral}`}>
+          {icon}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">{label}</p>
+        <p className={`mt-1 text-2xl font-semibold ${tones[tone] || tones.neutral}`}>{value}</p>
+      </div>
     </div>
   )
 }
@@ -850,8 +863,9 @@ function SessionsPanel() {
     <div>
       <ErrorBanner message={error} />
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatCard label="Total Sesi Aktif" value={loading ? '—' : sessions.length} />
+        <StatCard icon="🖥️" label="Total Sesi Aktif" value={loading ? '—' : sessions.length} />
         <StatCard
+          icon="👤"
           label="User Unik Login"
           value={loading ? '—' : new Set(sessions.map((s) => s.userId)).size}
         />
@@ -949,9 +963,9 @@ function LoginAttemptsPanel() {
     <div>
       <ErrorBanner message={error} />
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatCard label="Ditampilkan" value={loading ? '—' : rows.length} />
-        <StatCard label="Total Cocok Filter" value={loading ? '—' : total} />
-        <StatCard label="Gagal (di halaman ini)" value={loading ? '—' : failedCount} tone="red" />
+        <StatCard icon="📋" label="Ditampilkan" value={loading ? '—' : rows.length} />
+        <StatCard icon="🔎" label="Total Cocok Filter" value={loading ? '—' : total} />
+        <StatCard icon="❌" label="Gagal (di halaman ini)" value={loading ? '—' : failedCount} tone="red" />
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">

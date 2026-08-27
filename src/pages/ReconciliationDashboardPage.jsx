@@ -29,18 +29,31 @@ function formatWaktu(dateLike) {
   })
 }
 
-function AlertCard({ label, value, tone, description }) {
+function AlertCard({ icon, label, value, tone, description }) {
   const toneClass =
     tone === 'danger'
       ? 'text-[var(--color-danger)]'
       : tone === 'warning'
         ? 'text-[var(--color-warning)]'
         : 'text-[var(--color-brand)]'
+  const iconToneClass =
+    tone === 'danger'
+      ? 'bg-red-50 text-red-600'
+      : tone === 'warning'
+        ? 'bg-amber-50 text-amber-600'
+        : 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]'
   return (
-    <div className="card-elevated rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-      <p className="text-sm text-[var(--color-ink-soft)]">{label}</p>
-      <p className={`figure mt-2 text-2xl font-semibold ${toneClass}`}>{value}</p>
-      {description && <p className="mt-1 text-xs text-[var(--color-ink-soft)]">{description}</p>}
+    <div className="card-elevated flex items-start gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      {icon && (
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${iconToneClass}`}>
+          {icon}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-sm text-[var(--color-ink-soft)]">{label}</p>
+        <p className={`figure mt-2 text-2xl font-semibold ${toneClass}`}>{value}</p>
+        {description && <p className="mt-1 text-xs text-[var(--color-ink-soft)]">{description}</p>}
+      </div>
     </div>
   )
 }
@@ -241,12 +254,14 @@ export default function ReconciliationDashboardPage() {
         <>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <AlertCard
+              icon="💰"
               label="Kas Belum Disetor"
               value={String(kasBelumDisetor.length)}
               tone={kasBelumDisetor.length ? 'warning' : 'brand'}
               description={kasBelumDisetor.length ? formatRupiah(kasBelumDisetorTotal) + ' tertahan' : 'Tidak ada alert'}
             />
             <AlertCard
+              icon="⏳"
               label="Transfer Menunggu Konfirmasi"
               value={String(transferMenunggu.length)}
               tone={transferMenunggu.length ? 'warning' : 'brand'}
@@ -257,6 +272,7 @@ export default function ReconciliationDashboardPage() {
               }
             />
             <AlertCard
+              icon="🚨"
               label="Transfer Perlu Eskalasi"
               value={String(transferSelisihEskalasi.length)}
               tone={transferSelisihEskalasi.length ? 'danger' : 'brand'}
