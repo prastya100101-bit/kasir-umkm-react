@@ -11,6 +11,11 @@ import { useAuth, ROLES } from '../../context/AuthContext'
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'utama' },
   { to: '/kasir', label: 'Kasir', roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
+  // Riwayat Penjualan — daftar transaksi (beda dari Kasir yang layar checkout
+  // aktif). Akses sama dengan Kasir; scope data per lokasi ditegakkan backend
+  // (scopeWhere di kasirRoutes.js & dashboardController.js), sama pola dengan
+  // Riwayat Shift di grup SDM.
+  { to: '/riwayat-penjualan', label: 'Riwayat Penjualan', roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
   // Meja/Preorder/Antrian QR Order — akses sama dengan Kasir (backend
   // mejaRoutes/preorderRoutes/qrOrderRoutes cuma verifyToken, tidak
   // digerbangi pageKey/requireRole khusus selain aksi tulis tertentu).
