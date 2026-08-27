@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { FileCheck2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchCashAccounts,
@@ -107,7 +108,7 @@ export default function BankReconciliationPage() {
   const visibleTabs = TABS
 
   return (
-    <AppLayout title="Rekonsiliasi Bank">
+    <AppLayout title="Rekonsiliasi Bank" icon={FileCheck2}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-lg bg-[var(--color-surface-muted)] p-1">
           {visibleTabs.map((t) => (

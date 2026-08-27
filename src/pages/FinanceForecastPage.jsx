@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { LineChart } from 'lucide-react'
 import { formatRupiah } from '../utils/format'
 import {
   fetchCashFlowForecast,
@@ -50,7 +51,7 @@ export default function FinanceForecastPage() {
   const [tab, setTab] = useState('forecast')
 
   return (
-    <AppLayout title="Proyeksi Kas & Piutang/Utang">
+    <AppLayout title="Proyeksi Kas & Piutang/Utang" icon={LineChart}>
       <div className="mb-4 flex gap-1 rounded-lg border border-[var(--color-border)] p-1 text-xs">
         {TOP_TABS.map((t) => (
           <button

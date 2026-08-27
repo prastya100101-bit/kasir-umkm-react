@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { RefreshCw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
@@ -222,7 +223,7 @@ export default function StockRebalancingPage() {
   const filteredHistory = history ? history.filter((trf) => historyMatchesFilter(trf, filterSubCabangIds)) : []
 
   return (
-    <AppLayout title="Stock Rebalancing">
+    <AppLayout title="Stock Rebalancing" icon={RefreshCw}>
       <div className="flex justify-end">
         <LocationFilterTree />
       </div>

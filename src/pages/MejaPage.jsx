@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AppLayout from '../components/layout/AppLayout'
+import { Table2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { formatRupiah } from '../utils/format'
 import { fetchCurrentShift, searchCustomers } from '../api/kasir'
@@ -1077,7 +1078,7 @@ export default function MejaPage() {
   }, [])
 
   return (
-    <AppLayout title="Meja & Preorder">
+    <AppLayout title="Meja & Preorder" icon={Table2}>
       <div className="mb-5 flex gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-sm w-fit">
         {TABS.map((t) => (
           <button

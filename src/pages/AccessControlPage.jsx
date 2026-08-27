@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Users } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { formatRupiah, formatDateTime } from '../utils/format'
 import {
@@ -1356,7 +1357,7 @@ export default function AccessControlPage() {
   const [tab, setTab] = useState('roles')
 
   return (
-    <AppLayout title="Manajemen Role & User">
+    <AppLayout title="Manajemen Role & User" icon={Users}>
       <div className="mb-5 flex gap-1 border-b border-[var(--color-border)]">
         {TABS.map((t) => (
           <button

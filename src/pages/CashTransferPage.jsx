@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { ArrowLeftRight } from 'lucide-react'
 import { useLocationStore } from '../store/useLocationStore'
 import { fetchCashAccounts } from '../api/purchasing'
 import {
@@ -419,7 +420,7 @@ export default function CashTransferPage() {
   const cabangOptions = availableLocations.filter((l) => l.type === 'CABANG')
 
   return (
-    <AppLayout title="Transfer Kas Lintas Lokasi">
+    <AppLayout title="Transfer Kas Lintas Lokasi" icon={ArrowLeftRight}>
       <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
         <KirimTransferForm
           subCabangOptions={subCabangOptions}

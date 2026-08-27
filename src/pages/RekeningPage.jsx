@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Landmark } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchCashAccountsFull,
@@ -333,7 +334,7 @@ export default function RekeningPage() {
   const totalSaldo = accounts.reduce((sum, a) => sum + Number(a.saldo || 0), 0)
 
   return (
-    <AppLayout title="Rekening Kas & Bank">
+    <AppLayout title="Rekening Kas & Bank" icon={Landmark}>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-3">

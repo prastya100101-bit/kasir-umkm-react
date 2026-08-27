@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { LayoutDashboard } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
@@ -662,7 +663,7 @@ export default function DashboardPage() {
   )
 
   return (
-    <AppLayout title="Dashboard">
+    <AppLayout title="Dashboard" icon={LayoutDashboard}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--color-ink-soft)]">
           Halo, {user?.name ?? user?.username}. Menampilkan data untuk{' '}

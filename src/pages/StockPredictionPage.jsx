@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { BarChart3 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import {
@@ -200,7 +201,7 @@ export default function StockPredictionPage() {
   }, [report, statusFilter, typeFilter, search])
 
   return (
-    <AppLayout title="Prediksi Stok (AI)">
+    <AppLayout title="Prediksi Stok (AI)" icon={BarChart3}>
       <div className="space-y-4">
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <p className="text-sm text-[var(--color-ink-soft)]">

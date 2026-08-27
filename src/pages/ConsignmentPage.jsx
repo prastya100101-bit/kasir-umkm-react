@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Handshake } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { searchProductItems } from '../api/stockPenuh'
 import {
@@ -1144,7 +1145,7 @@ export default function ConsignmentPage() {
   }, [tab])
 
   return (
-    <AppLayout title="Konsinyasi">
+    <AppLayout title="Konsinyasi" icon={Handshake}>
       <div className="mb-5 flex gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-sm w-fit">
         {TABS.map((t) => (
           <button

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Wallet } from 'lucide-react'
 import { formatRupiah } from '../utils/format'
 import { fetchCostCenters } from '../api/costCenters'
 import { fetchCashAccounts } from '../api/bankReconciliation'
@@ -124,7 +125,7 @@ export default function ExpensePage() {
   }
 
   return (
-    <AppLayout title="Pengeluaran / Beban">
+    <AppLayout title="Pengeluaran / Beban" icon={Wallet}>
       <ErrorBanner message={error} />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

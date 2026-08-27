@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { PiggyBank } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchBudgets,
@@ -954,7 +955,7 @@ export default function BudgetingPage() {
   const visibleTabs = TABS.filter((t) => !t.superAdminOnly || isSuperAdmin)
 
   return (
-    <AppLayout title="Budgeting">
+    <AppLayout title="Budgeting" icon={PiggyBank}>
       <div className="mb-5 flex gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-sm w-fit">
         {visibleTabs.map((t) => (
           <button

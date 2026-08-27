@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { AlertTriangle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import {
@@ -215,7 +216,7 @@ export default function AnomalyPage() {
   }, [report, severityFilter, typeFilter])
 
   return (
-    <AppLayout title="Dashboard Anomali">
+    <AppLayout title="Dashboard Anomali" icon={AlertTriangle}>
       <div className="space-y-4">
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <p className="text-sm text-[var(--color-ink-soft)]">

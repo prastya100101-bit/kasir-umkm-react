@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { PackageCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import {
@@ -1507,7 +1508,7 @@ export default function StokPenuhPage() {
   const defaultSubCabangId = activeLocation?.type === 'SUBCABANG' ? activeLocation.id : subCabangOptions[0]?.id
 
   return (
-    <AppLayout title="Stok Penuh">
+    <AppLayout title="Stok Penuh" icon={PackageCheck}>
       <div className="mb-5 flex gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-sm w-fit">
         {TABS.map((t) => (
           <button

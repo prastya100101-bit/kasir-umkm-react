@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Banknote } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { fetchCashAccounts } from '../api/purchasing'
 import {
@@ -491,7 +492,7 @@ export default function PayrollPage() {
   }, [periode, statusFilter])
 
   return (
-    <AppLayout title="Payroll">
+    <AppLayout title="Payroll" icon={Banknote}>
       <div className="mb-4 flex gap-1 rounded-md border border-[var(--color-border)] p-1 text-sm w-fit">
         <button
           onClick={() => setTab('payroll')}

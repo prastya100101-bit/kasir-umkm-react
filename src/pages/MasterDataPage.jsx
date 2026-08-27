@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Database } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import { formatRupiah } from '../utils/format'
@@ -2461,7 +2462,7 @@ export default function MasterDataPage() {
   }, [reloadRawMaterials, tab === 'bahan-baku' || tab === 'produk' ? tab : null])
 
   return (
-    <AppLayout title="Master Data">
+    <AppLayout title="Master Data" icon={Database}>
       <div className="mb-5 flex gap-1 border-b border-[var(--color-border)]">
         {TABS.map((t) => (
           <button

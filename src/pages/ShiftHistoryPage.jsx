@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { History } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import { fetchShiftHistory, fetchShiftDetail } from '../api/shift'
 import { formatRupiah } from '../utils/format'
@@ -99,7 +100,7 @@ export default function ShiftHistoryPage() {
   }, [visibleShifts])
 
   return (
-    <AppLayout title="Riwayat Shift">
+    <AppLayout title="Riwayat Shift" icon={History}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         {isManagerUp ? (
           <div className="flex gap-1 rounded-lg bg-[var(--color-surface-muted)] p-1">

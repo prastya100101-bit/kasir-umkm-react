@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Receipt } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
@@ -513,7 +514,7 @@ export default function RiwayatPenjualanPage() {
     .reduce((sum, s) => sum + Number(s.total), 0)
 
   return (
-    <AppLayout title="Riwayat Penjualan">
+    <AppLayout title="Riwayat Penjualan" icon={Receipt}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--color-ink-soft)]">
           {filtered.length} transaksi · Total {formatRupiah(totalOmzet)}

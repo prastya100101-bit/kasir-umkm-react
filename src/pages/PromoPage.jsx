@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { BadgePercent } from 'lucide-react'
 import { formatRupiah } from '../utils/format'
 import { fetchCategories, fetchProducts } from '../api/masterData'
 import {
@@ -153,7 +154,7 @@ export default function PromoPage() {
   }
 
   return (
-    <AppLayout title="Promo / Diskon">
+    <AppLayout title="Promo / Diskon" icon={BadgePercent}>
       <ErrorBanner message={error} />
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex gap-1 rounded-lg border border-[var(--color-border)] p-1 text-xs">

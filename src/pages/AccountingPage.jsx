@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Calculator } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchChartOfAccounts,
@@ -1690,14 +1691,14 @@ export default function AccountingPage() {
 
   if (!isSuperAdmin) {
     return (
-      <AppLayout title="Akuntansi">
+      <AppLayout title="Akuntansi" icon={Calculator}>
         <Empty text="Halaman Akuntansi (Jurnal & COA) hanya bisa diakses Super Admin." />
       </AppLayout>
     )
   }
 
   return (
-    <AppLayout title="Akuntansi">
+    <AppLayout title="Akuntansi" icon={Calculator}>
       <div className="mb-5 flex flex-wrap gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-sm w-fit">
         {TABS.map((t) => (
           <button

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { ShoppingCart } from 'lucide-react'
 import CameraScanModal from '../components/kasir/CameraScanModal'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
@@ -992,14 +993,14 @@ export default function KasirPage() {
   // ---- Gate: belum ada shift terbuka ----
   if (shift === undefined) {
     return (
-      <AppLayout title="Kasir">
+      <AppLayout title="Kasir" icon={ShoppingCart}>
         <div className="h-40 animate-pulse rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
       </AppLayout>
     )
   }
   if (shift === null) {
     return (
-      <AppLayout title="Kasir">
+      <AppLayout title="Kasir" icon={ShoppingCart}>
         <OpenShiftScreen onOpened={setShift} />
       </AppLayout>
     )
@@ -1065,7 +1066,7 @@ export default function KasirPage() {
   )
 
   return (
-    <AppLayout title="Kasir">
+    <AppLayout title="Kasir" icon={ShoppingCart}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-[var(--color-ink-soft)]">
           Shift dibuka {new Date(shift.waktuBuka).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}

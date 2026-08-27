@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Factory } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import { searchProductItems } from '../api/stockPenuh'
@@ -559,7 +560,7 @@ export default function ProduksiPage() {
   const defaultSubCabangId = activeLocation?.type === 'SUBCABANG' ? activeLocation.id : subCabangOptions[0]?.id
 
   return (
-    <AppLayout title="Produksi">
+    <AppLayout title="Produksi" icon={Factory}>
       {subCabangOptions.length === 0 ? (
         <div className="flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
           <p className="text-sm text-[var(--color-ink-soft)]">Memuat daftar lokasi…</p>

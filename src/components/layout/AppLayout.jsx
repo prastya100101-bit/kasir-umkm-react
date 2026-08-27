@@ -4,7 +4,7 @@ import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import { useLoadLocations } from '../../hooks/useLoadLocations'
 
-export default function AppLayout({ title, children }) {
+export default function AppLayout({ title, icon, children }) {
   // Satu-satunya titik pemanggilan useLoadLocations di seluruh app — AppLayout
   // membungkus semua halaman yang butuh login, jadi lokasi otomatis ke-load
   // begitu masuk halaman manapun setelah login, tanpa fetch berulang per halaman.
@@ -28,7 +28,7 @@ export default function AppLayout({ title, children }) {
     <div className="flex min-h-screen bg-[var(--color-canvas)]">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="min-w-0 flex-1">
-        <TopBar title={title} onMenuClick={() => setSidebarOpen((v) => !v)} />
+        <TopBar title={title} icon={icon} onMenuClick={() => setSidebarOpen((v) => !v)} />
         <main className="p-4 md:p-6">{children}</main>
       </div>
     </div>

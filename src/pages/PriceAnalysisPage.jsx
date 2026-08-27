@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Sparkles } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import { formatRupiah } from '../utils/format'
@@ -186,7 +187,7 @@ export default function PriceAnalysisPage() {
   )
 
   return (
-    <AppLayout title="Rekomendasi Harga & Analisa Produk">
+    <AppLayout title="Rekomendasi Harga & Analisa Produk" icon={Sparkles}>
       <div className="space-y-4">
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <p className="text-sm text-[var(--color-ink-soft)]">

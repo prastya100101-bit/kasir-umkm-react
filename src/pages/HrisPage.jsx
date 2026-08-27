@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { CalendarCheck } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import {
   checkIn,
@@ -657,7 +658,7 @@ export default function HrisPage() {
   const [tab, setTab] = useState('absensi')
 
   return (
-    <AppLayout title="HRIS — Absensi & Cuti">
+    <AppLayout title="HRIS — Absensi & Cuti" icon={CalendarCheck}>
       <div className="mb-4 flex gap-2 border-b border-[var(--color-border)]">
         {tabs.map((t) => (
           <button

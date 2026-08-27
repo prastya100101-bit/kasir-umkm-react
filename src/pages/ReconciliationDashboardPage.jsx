@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { ClipboardCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
@@ -199,7 +200,7 @@ export default function ReconciliationDashboardPage() {
         : `${filterSubCabangIds.length} lokasi terpilih`
 
   return (
-    <AppLayout title="Dashboard Rekonsiliasi">
+    <AppLayout title="Dashboard Rekonsiliasi" icon={ClipboardCheck}>
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <p className="text-sm text-[var(--color-ink-soft)]">
           Menampilkan data untuk{' '}

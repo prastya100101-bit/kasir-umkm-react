@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Settings } from 'lucide-react'
 import { fetchSettings, saveSettings } from '../api/settings'
 
 function errMsg(err, fallback) {
@@ -118,14 +119,14 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <AppLayout title="Pengaturan Bisnis">
+      <AppLayout title="Pengaturan Bisnis" icon={Settings}>
         <p className="text-sm text-[var(--color-ink-soft)]">Memuat...</p>
       </AppLayout>
     )
   }
 
   return (
-    <AppLayout title="Pengaturan Bisnis">
+    <AppLayout title="Pengaturan Bisnis" icon={Settings}>
       <ErrorBanner message={error} />
       <SuccessBanner message={success} />
 

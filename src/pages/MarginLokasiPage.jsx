@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Percent } from 'lucide-react'
 import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
 import { fetchPriceAnalysis } from '../api/priceAnalysis'
@@ -79,7 +80,7 @@ export default function MarginLokasiPage() {
       : `${filterSubCabangIds.length} lokasi terpilih`
 
   return (
-    <AppLayout title="Margin Lokasi">
+    <AppLayout title="Margin Lokasi" icon={Percent}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--color-ink-soft)]">
           Margin yang benar-benar terjadi dari transaksi tercatat untuk{' '}

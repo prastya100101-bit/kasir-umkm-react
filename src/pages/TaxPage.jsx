@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { FileText } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchTaxRecapTahunan,
@@ -258,7 +259,7 @@ export default function TaxPage() {
   }
 
   return (
-    <AppLayout title="Pajak UMKM">
+    <AppLayout title="Pajak UMKM" icon={FileText}>
       <HitungForm onCreated={load} />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">

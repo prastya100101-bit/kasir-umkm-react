@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { CalendarClock } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import {
   fetchKaryawanUntukJadwal,
@@ -709,7 +710,7 @@ export default function SchedulePage() {
   const [tab, setTab] = useState('saya')
 
   return (
-    <AppLayout title="Jadwal Shift & Tim">
+    <AppLayout title="Jadwal Shift & Tim" icon={CalendarClock}>
       <div className="mb-4 flex gap-2 border-b border-[var(--color-border)]">
         {tabs.map((t) => (
           <button

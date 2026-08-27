@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
+import { Building2 } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import { fetchCashAccounts } from '../api/purchasing'
 import {
@@ -846,7 +847,7 @@ export default function AsetTetapPage() {
   const [detailId, setDetailId] = useState(null)
 
   return (
-    <AppLayout title="Aset Tetap">
+    <AppLayout title="Aset Tetap" icon={Building2}>
       <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
         <div className="flex flex-col gap-4">
           {canManage && <TambahAsetForm onCreated={() => setRefreshKey((k) => k + 1)} />}
