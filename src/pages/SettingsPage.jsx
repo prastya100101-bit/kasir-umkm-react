@@ -231,7 +231,7 @@ export default function SettingsPage() {
 
       <SectionCard
         title="Template Panggilan (Papan Panggilan)"
-        note="Kalimat pembuka & penutup saat nomor pesanan dipanggil. Bagian tengah (nama/nomor pesanan + \"silakan diambil di kasir\") otomatis dan tidak bisa diubah. Contoh: \"[Pembuka] Pesanan atas nama Andri, silakan diambil di kasir. [Penutup]\". Perubahan langsung dipakai di layar Papan Panggilan (polling tiap 60 detik)."
+        note={`Kalimat pembuka & penutup saat nomor pesanan dipanggil. Bagian tengah (nama/nomor pesanan + "silakan diambil di kasir") otomatis dan tidak bisa diubah. Contoh: "[Pembuka] Pesanan atas nama Andri, silakan diambil di kasir. [Penutup]". Perubahan langsung dipakai di layar Papan Panggilan (polling tiap 60 detik).`}
         saving={savingSection === 'panggilan'}
         onSubmit={(e) => {
           e.preventDefault()
