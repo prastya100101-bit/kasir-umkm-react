@@ -7,8 +7,11 @@ import apiClient from './client'
 // manapun). subCabangId di sini cuma dipakai untuk slowMovingRows/returRows
 // di backend — marginRealizedByLocation sendiri sudah pecah per lokasi lewat
 // baris-barisnya (tidak perlu di-narrow lagi di query).
-export async function fetchPriceAnalysis({ days = 30, subCabangId } = {}) {
-  const params = { days }
+// `from`/`to` (YYYY-MM-DD, BARU Audit #4) dipakai MarginLokasiPage.jsx untuk
+// opsi "Rentang tanggal..." — kalau keduanya diisi, menang atas `days`
+// (lihat priceAnalysisController.js / priceAnalysisService.js backend).
+export async function fetchPriceAnalysis({ days = 30, from, to, subCabangId } = {}) {
+  const params = from && to ? { from, to } : { days }
   if (subCabangId) params.subCabangId = subCabangId
   const { data } = await apiClient.get('/api/analisa-harga', { params })
   return data

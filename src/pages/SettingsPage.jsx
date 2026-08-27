@@ -73,6 +73,11 @@ export default function SettingsPage() {
   const [modal, setModal] = useState({ modalAwalUsaha: '' })
   const [retensi, setRetensi] = useState({ loginAttemptsRetentionDays: '', activityLogRetentionDays: '' })
   const [panggilan, setPanggilan] = useState({ prefix: '', suffix: '' })
+  // Audit #9 (27 Agustus 2026): nominal cepat "Uang Diterima" di Kasir,
+  // dulu hardcoded QUICK_CASH di KasirPage.jsx. Disimpan di form sebagai
+  // teks dipisah koma (lebih gampang diedit daripada UI tambah/hapus baris
+  // untuk sekadar daftar angka pendek), diparse ke array number saat submit.
+  const [nominalCepat, setNominalCepat] = useState('0, 5000, 10000, 20000, 50000, 100000')
 
   useEffect(() => {
     let mounted = true
@@ -94,6 +99,9 @@ export default function SettingsPage() {
         })
         const tmpl = data.announcementTemplate || {}
         setPanggilan({ prefix: tmpl.prefix || '', suffix: tmpl.suffix || '' })
+        if (Array.isArray(data.quickCashAmounts) && data.quickCashAmounts.length > 0) {
+          setNominalCepat(data.quickCashAmounts.join(', '))
+        }
       })
       .catch((err) => setError(errMsg(err, 'Gagal memuat pengaturan.')))
       .finally(() => setLoading(false))
@@ -252,6 +260,33 @@ export default function SettingsPage() {
             placeholder="Contoh: Matur nuhun"
             value={panggilan.suffix}
             onChange={(e) => setPanggilan({ ...panggilan, suffix: e.target.value })}
+          />
+        </Field>
+      </SectionCard>
+
+      <SectionCard
+        title="Nominal Cepat Kasir"
+        note='Tombol pecahan uang cepat di layar "Uang Diterima" saat checkout Kasir. Pisahkan dengan koma, urut dari kecil ke besar (mis. toko yang biasa terima pecahan Rp 200.000 bisa tambahkan di sini). "0" tetap disarankan tetap ada sebagai tombol reset ke kosong.'
+        saving={savingSection === 'nominalCepat'}
+        onSubmit={(e) => {
+          e.preventDefault()
+          const parsed = nominalCepat
+            .split(',')
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isFinite(n) && n >= 0)
+          if (parsed.length === 0) {
+            setError('Isi minimal satu nominal yang valid (angka >= 0, dipisah koma).')
+            return
+          }
+          handleSave('nominalCepat', { quickCashAmounts: parsed })
+        }}
+      >
+        <Field label="Daftar Nominal (Rp)" hint="Contoh: 0, 5000, 10000, 20000, 50000, 100000, 200000">
+          <input
+            className={inputClass}
+            value={nominalCepat}
+            onChange={(e) => setNominalCepat(e.target.value)}
+            placeholder="0, 5000, 10000, 20000, 50000, 100000"
           />
         </Field>
       </SectionCard>

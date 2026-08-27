@@ -24,6 +24,11 @@ import apiClient from './client'
 //                                 dipakai Papan Panggilan (PapanPanggilanPage.jsx)
 //                                 untuk teks suara panggil & header toko —
 //                                 di-wire 27 Agustus 2026 (gap 1.7 audit).
+//   - quickCashAmounts        -> disediakan via GET /public (array angka),
+//                                 dipakai KasirPage.jsx untuk tombol nominal
+//                                 cepat "Uang Diterima" — dulu hardcoded
+//                                 QUICK_CASH, sekarang bisa disetel per toko
+//                                 (Audit #9, 27 Agustus 2026).
 //   - modalAwalUsaha          -> TIDAK dibaca di mana pun di backend saat
 //                                 ini (Cash Flow Forecast pakai saldoAwal
 //                                 dari CashAccount, bukan dari Settings).
@@ -51,10 +56,11 @@ export async function saveSettings(partialSettings) {
 }
 
 // GET /api/settings/public — TANPA AUTH. Dipakai halaman publik (login,
-// Papan Panggilan, Menu Digital) untuk identitas toko & template pengumuman.
-// Response: { storeName, storeLogo, announcementTemplate: {prefix, suffix} }
-// — backend selalu balikin default kalau admin belum pernah mengatur, jadi
-// field ini TIDAK PERNAH undefined/null.
+// Papan Panggilan, Menu Digital) DAN KasirPage.jsx (butuh quickCashAmounts
+// walau login sebagai Kasir biasa, bukan Super Admin).
+// Response: { storeName, storeLogo, announcementTemplate: {prefix, suffix},
+// quickCashAmounts: number[] } — backend selalu balikin default kalau admin
+// belum pernah mengatur, jadi field ini TIDAK PERNAH undefined/null.
 export async function fetchPublicSettings() {
   const { data } = await apiClient.get('/api/settings/public')
   return data

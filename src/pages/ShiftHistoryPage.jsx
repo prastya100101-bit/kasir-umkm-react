@@ -23,10 +23,31 @@ const DAY_OPTIONS = [
   { value: 30, label: '30 hari' },
   { value: 90, label: '90 hari' },
   { value: 180, label: '180 hari' },
+  { value: 'custom', label: 'Rentang tanggal…' },
 ]
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function isoDaysAgo(n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString().slice(0, 10)
+}
+
+// Sama pola dengan RiwayatPenjualanPage.jsx (Audit #4): dipakai untuk
+// menghitung ?days=N yang dikirim ke backend supaya window data yang
+// ditarik mencakup seluruh rentang custom, lalu difilter presisi lagi di
+// client lewat `visibleShifts` (lihat customRange di bawah).
+function daysSince(fromIso) {
+  const from = new Date(`${fromIso}T00:00:00`)
+  const diffMs = Date.now() - from.getTime()
+  return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)) + 1)
 }
 
 function formatTanggalJam(d) {
@@ -64,33 +85,46 @@ export default function ShiftHistoryPage() {
   const isManagerUp = isSuperAdmin || role === ROLES.MANAGER || role === ROLES.SPV
   const [scope, setScope] = useState('saya') // 'saya' | 'semua'
   const [days, setDays] = useState(30)
+  const [customFrom, setCustomFrom] = useState(isoDaysAgo(30))
+  const [customTo, setCustomTo] = useState(todayISO())
   const [shifts, setShifts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [detailFor, setDetailFor] = useState(null)
 
+  const isCustomRange = days === 'custom'
+  const fetchDays = isCustomRange ? daysSince(customFrom) : days
+
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const list = await fetchShiftHistory({ days })
+      const list = await fetchShiftHistory({ days: fetchDays })
       setShifts(list)
     } catch (err) {
       setError(errMsg(err, 'Gagal memuat riwayat shift'))
     } finally {
       setLoading(false)
     }
-  }, [days])
+  }, [fetchDays])
 
   useEffect(() => {
     load()
   }, [load])
 
   const visibleShifts = useMemo(() => {
-    const sorted = [...shifts].sort((a, b) => new Date(b.waktuBuka) - new Date(a.waktuBuka))
-    if (scope === 'saya') return sorted.filter((s) => s.userId === user?.id)
-    return sorted
-  }, [shifts, scope, user?.id])
+    let rows = [...shifts].sort((a, b) => new Date(b.waktuBuka) - new Date(a.waktuBuka))
+    if (scope === 'saya') rows = rows.filter((s) => s.userId === user?.id)
+    if (isCustomRange) {
+      const fromMs = new Date(`${customFrom}T00:00:00`).getTime()
+      const toMs = new Date(`${customTo}T23:59:59.999`).getTime()
+      rows = rows.filter((s) => {
+        const t = new Date(s.waktuBuka).getTime()
+        return t >= fromMs && t <= toMs
+      })
+    }
+    return rows
+  }, [shifts, scope, user?.id, isCustomRange, customFrom, customTo])
 
   const summary = useMemo(() => {
     const closed = visibleShifts.filter((s) => s.status === 'closed')
@@ -125,15 +159,37 @@ export default function ShiftHistoryPage() {
           <h2 className="text-sm font-medium text-[var(--color-ink-soft)]">Riwayat shift saya</h2>
         )}
 
-        <select
-          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
-          value={days}
-          onChange={(e) => setDays(Number(e.target.value))}
-        >
-          {DAY_OPTIONS.map((d) => (
-            <option key={d.value} value={d.value}>{d.label} terakhir</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+            value={days}
+            onChange={(e) => setDays(e.target.value === 'custom' ? 'custom' : Number(e.target.value))}
+          >
+            {DAY_OPTIONS.map((d) => (
+              <option key={d.value} value={d.value}>{d.value === 'custom' ? d.label : `${d.label} terakhir`}</option>
+            ))}
+          </select>
+          {isCustomRange && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+              />
+              <span className="text-xs text-[var(--color-ink-soft)]">s/d</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom}
+                max={todayISO()}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+              />
+            </>
+          )}
+        </div>
       </div>
 
       <div className="mb-5 grid grid-cols-3 gap-3">

@@ -10,7 +10,18 @@ const DAY_OPTIONS = [
   { value: 7, label: '7 hari' },
   { value: 30, label: '30 hari' },
   { value: 90, label: '90 hari' },
+  { value: 'custom', label: 'Rentang tanggal…' },
 ]
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function isoDaysAgo(n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString().slice(0, 10)
+}
 
 // Halaman ini SENGAJA read-only. Awalnya roadmap Hari 4 nyebut "Edit margin
 // per-lokasi", tapi itu bertentangan dengan standar akurasi proyek: harga
@@ -31,9 +42,13 @@ function marginTone(marginPercent) {
 export default function MarginLokasiPage() {
   const { availableLocations, filterSubCabangIds } = useLocationStore()
   const [days, setDays] = useState(30)
+  const [customFrom, setCustomFrom] = useState(isoDaysAgo(30))
+  const [customTo, setCustomTo] = useState(todayISO())
   const [report, setReport] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  const isCustomRange = days === 'custom'
 
   useEffect(() => {
     document.title = 'Margin Lokasi — KASIR UMKM'
@@ -49,7 +64,14 @@ export default function MarginLokasiPage() {
     // sepenuhnya di sisi client lewat filterSubCabangIds (mendukung
     // multi-select, beda dari parameter subCabangId tunggal yang dipakai
     // getReport untuk slowMovingRows/returRows yang tidak dipakai halaman ini).
-    fetchPriceAnalysis({ days })
+    //
+    // Rentang tanggal CUSTOM (BARU, Audit #4, 27 Agustus 2026): beda dari
+    // RiwayatPenjualanPage.jsx yang cukup filter ulang di client, di sini
+    // marginRealizedByLocation sudah AGREGAT dari backend (bukan baris per
+    // transaksi) — jadi from/to dikirim langsung ke backend supaya window
+    // agregasinya presisi, bukan cuma di-crop di client.
+    const params = isCustomRange ? { from: customFrom, to: customTo } : { days }
+    fetchPriceAnalysis(params)
       .then((data) => {
         if (cancelled) return
         setReport(data)
@@ -65,7 +87,7 @@ export default function MarginLokasiPage() {
     return () => {
       cancelled = true
     }
-  }, [days])
+  }, [days, isCustomRange, customFrom, customTo])
 
   // marginRealizedByLocation sudah pecah per baris produk+lokasi dari
   // backend — filter lokasi (multi-select, BARU) murni penyaringan sisi
@@ -106,6 +128,26 @@ export default function MarginLokasiPage() {
               </button>
             ))}
           </div>
+          {isCustomRange && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+              />
+              <span className="text-xs text-[var(--color-ink-soft)]">s/d</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom}
+                max={todayISO()}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -132,7 +174,7 @@ export default function MarginLokasiPage() {
             Belum ada transaksi
           </p>
           <p className="mt-1 text-sm text-[var(--color-ink-soft)]">
-            Tidak ada produk terjual dalam {days} hari terakhir untuk lokasi ini.
+            Tidak ada produk terjual {isCustomRange ? `antara ${customFrom} s/d ${customTo}` : `dalam ${days} hari terakhir`} untuk lokasi ini.
           </p>
         </div>
       )}

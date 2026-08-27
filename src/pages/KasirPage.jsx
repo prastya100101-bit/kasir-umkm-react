@@ -17,6 +17,7 @@ import {
   checkoutSale,
 } from '../api/kasir'
 import { fetchActivePromo } from '../api/promo'
+import { fetchPublicSettings } from '../api/settings'
 import { findBestPromoForProduct, computePromoDiscount, isPromoActiveNow, isPromoApplicableToProduct } from '../utils/promoMatch'
 import {
   connectBluetoothPrinter,
@@ -30,14 +31,29 @@ import {
 // perlu refresh halaman. 60 detik cukup responsif tanpa membebani server.
 const PROMO_SYNC_INTERVAL_MS = 60_000
 
+// Audit #6 (27 Agustus 2026): dulu cuma 4 metode di sini padahal backend
+// (ALL_PAY_METHODS di saleService.js) & label laporan (RiwayatPenjualanPage,
+// DashboardPage) sudah mengenal 6 termasuk Debit & Kredit — sisa dari sistem
+// lama yang tidak pernah diaktifkan di layar checkout. Ditambahkan di sini
+// (bukan dihapus dari laporan) karena backend SUDAH bisa menjurnal keduanya
+// dengan benar (resolveCashAccountCode di accountingService.js sudah
+// menangani payMethod apa pun selain 'tunai' → default akun Bank, atau akun
+// kas custom kalau ada CashAccount dengan defaultForPayMethod yang cocok) —
+// jadi menambahkan pilihannya di Kasir tidak butuh perubahan backend sama
+// sekali, dan sekarang konsisten dengan apa yang laporan sudah kenal.
 const PAY_METHODS = [
   { id: 'tunai', label: 'Tunai' },
   { id: 'qris', label: 'QRIS' },
+  { id: 'debit', label: 'Debit' },
+  { id: 'kredit', label: 'Kredit' },
   { id: 'transfer', label: 'Transfer' },
   { id: 'kasbon', label: 'Kasbon' },
 ]
 
-const QUICK_CASH = [0, 5000, 10000, 20000, 50000, 100000]
+// Default nominal cepat kalau /api/settings/public belum sempat dimuat atau
+// admin belum pernah mengatur (backend punya default yang sama persis di
+// settingsController.js:DEFAULT_QUICK_CASH_AMOUNTS — dijaga konsisten).
+const DEFAULT_QUICK_CASH = [0, 5000, 10000, 20000, 50000, 100000]
 
 // ---------------- Helper murni (di luar komponen, tidak butuh state React) ----------------
 
@@ -393,7 +409,7 @@ function CartRow({ item, onChangeQty, onRemove, onEditDiscount }) {
 
 // ---------------- Modal checkout ----------------
 
-function CheckoutModal({ cart, subCabangId, shiftId, onClose, onSuccess }) {
+function CheckoutModal({ cart, subCabangId, shiftId, quickCashAmounts, onClose, onSuccess }) {
   const [headerDiscount, setHeaderDiscount] = useState(0)
   const [payMethod, setPayMethod] = useState('tunai')
   const [cashGiven, setCashGiven] = useState('')
@@ -569,13 +585,15 @@ function CheckoutModal({ cart, subCabangId, shiftId, onClose, onSuccess }) {
           </div>
         </div>
 
-        {/* Metode bayar */}
-        <div className="mt-4 flex gap-2">
+        {/* Metode bayar — grid 3 kolom (BARU: 6 metode sejak Audit #6, dulu
+            4 muat dalam 1 baris `flex`; grid 2 baris menjaga tombol tetap
+            cukup besar untuk disentuh di layar kasir/tablet). */}
+        <div className="mt-4 grid grid-cols-3 gap-2">
           {PAY_METHODS.map((m) => (
             <button
               key={m.id}
               onClick={() => setPayMethod(m.id)}
-              className={`flex-1 rounded-lg border py-2 text-sm font-medium ${
+              className={`rounded-lg border py-2 text-sm font-medium ${
                 payMethod === m.id
                   ? 'border-[var(--color-brand)] bg-[var(--color-brand)] text-white'
                   : 'border-[var(--color-border)] text-[var(--color-ink)]'
@@ -597,7 +615,7 @@ function CheckoutModal({ cart, subCabangId, shiftId, onClose, onSuccess }) {
               className="figure mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-2 text-right text-base"
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {QUICK_CASH.map((n) => (
+              {(quickCashAmounts || DEFAULT_QUICK_CASH).map((n) => (
                 <button
                   key={n}
                   onClick={() => setCashGiven(n === 0 ? String(totals.total) : String(Number(cashGiven || 0) + n))}
@@ -782,6 +800,24 @@ export default function KasirPage() {
   // `activeNow`) — disinkron ulang berkala supaya promo berbasis jam tetap
   // akurat. Dipakai untuk badge di kartu produk & diskon otomatis keranjang.
   const [promosActiveNow, setPromosActiveNow] = useState([])
+  // Nominal cepat "Uang Diterima" (Audit #9, 27 Agustus 2026) — dulu
+  // hardcoded QUICK_CASH, sekarang disetel dari Pengaturan Bisnis lewat
+  // /api/settings/public (endpoint yang sama juga dipakai layar login/Papan
+  // Panggilan — dipilih karena GET /api/settings biasa dikunci Super Admin
+  // saja, sedangkan Kasir biasa perlu baca nilai ini juga). Fallback ke
+  // DEFAULT_QUICK_CASH kalau fetch gagal/belum sempat selesai, supaya kasir
+  // tetap bisa transaksi walau /public sedang bermasalah.
+  const [quickCashAmounts, setQuickCashAmounts] = useState(DEFAULT_QUICK_CASH)
+
+  useEffect(() => {
+    fetchPublicSettings()
+      .then((data) => {
+        if (Array.isArray(data.quickCashAmounts) && data.quickCashAmounts.length > 0) {
+          setQuickCashAmounts(data.quickCashAmounts)
+        }
+      })
+      .catch(() => {}) // gagal fetch tidak boleh menghalangi kasir jualan — tetap pakai default
+  }, [])
 
   useEffect(() => {
     document.title = 'Kasir — KASIR UMKM'
@@ -1202,6 +1238,7 @@ export default function KasirPage() {
           cart={cart}
           subCabangId={subCabangId}
           shiftId={shift.id}
+          quickCashAmounts={quickCashAmounts}
           onClose={() => setCheckoutOpen(false)}
           onSuccess={handleCheckoutSuccess}
         />
