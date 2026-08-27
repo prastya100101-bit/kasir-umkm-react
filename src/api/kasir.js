@@ -77,3 +77,27 @@ export async function cancelSale(id, { alasan } = {}) {
   const { data } = await apiClient.post(`/api/kasir/sales/${id}/batal`, { alasan })
   return data
 }
+
+// ---- Retur Penjualan ----------------------------------------------------
+// Backend: kasirController.js retur()/getReturBySale()/getReturDetail(),
+// routes: POST /api/kasir/retur, GET /api/kasir/sales/:saleId/retur,
+// GET /api/kasir/retur/:id (lihat kasirRoutes.js).
+// id wajib client-generated UUID (idempotency key, sama pola dengan
+// checkout/transfer kas — retur dobel dgn id sama akan dibalas 200 apa
+// adanya, bukan diproses ulang).
+export async function returSale({ id, saleId, refundMethod, alasan, items, cashAccountId } = {}) {
+  const { data } = await apiClient.post('/api/kasir/retur', {
+    id: id || crypto.randomUUID(),
+    saleId,
+    refundMethod,
+    alasan,
+    items, // [{ productId, qty }]
+    cashAccountId: cashAccountId || undefined,
+  })
+  return data
+}
+
+export async function fetchReturBySale(saleId) {
+  const { data } = await apiClient.get(`/api/kasir/sales/${saleId}/retur`)
+  return data
+}

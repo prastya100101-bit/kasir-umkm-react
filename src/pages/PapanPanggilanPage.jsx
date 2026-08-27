@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchPublicPanggilan } from '../api/mejaPreorderQr'
+import { fetchPublicSettings } from '../api/settings'
 
 // Halaman PUBLIK untuk layar/speaker terpisah di area tunggu — polling tiap
 // 5 detik (lihat qrOrderController.listPanggilanPublik) dan memicu
@@ -7,6 +8,7 @@ import { fetchPublicPanggilan } from '../api/mejaPreorderQr'
 // diumumkan device ini. Tidak butuh login, tidak pakai AppLayout.
 
 const POLL_MS = 5000
+const SETTINGS_POLL_MS = 60_000 // sinkron ulang nama/logo toko & template pengumuman kalau admin ubah di Pengaturan
 
 function speak(text) {
   if (!('speechSynthesis' in window)) return
@@ -19,10 +21,28 @@ function speak(text) {
 export default function PapanPanggilanPage() {
   const [orders, setOrders] = useState([])
   const [error, setError] = useState(null)
+  const [settings, setSettings] = useState({ storeName: 'Warung POS', storeLogo: '', announcementTemplate: { prefix: '', suffix: '' } })
   const announcedRef = useRef(new Set()) // key `${id}:${calledAt}` yang sudah diumumkan device ini
+  const templateRef = useRef(settings.announcementTemplate) // dibaca di dalam poll() tanpa perlu jadi dependency effect
 
   useEffect(() => {
-    document.title = 'Papan Panggilan'
+    templateRef.current = settings.announcementTemplate
+  }, [settings.announcementTemplate])
+
+  useEffect(() => {
+    document.title = settings.storeName ? `Papan Panggilan — ${settings.storeName}` : 'Papan Panggilan'
+  }, [settings.storeName])
+
+  useEffect(() => {
+    let cancelled = false
+    function loadSettings() {
+      fetchPublicSettings()
+        .then((data) => { if (!cancelled) setSettings(data) })
+        .catch(() => {}) // gagal ambil pengaturan toko tidak boleh menghentikan papan panggilan
+    }
+    loadSettings()
+    const t = setInterval(loadSettings, SETTINGS_POLL_MS)
+    return () => { cancelled = true; clearInterval(t) }
   }, [])
 
   useEffect(() => {
@@ -39,7 +59,9 @@ export default function PapanPanggilanPage() {
           if (!announcedRef.current.has(key)) {
             announcedRef.current.add(key)
             const namaOrNomor = o.customerName ? o.customerName : `nomor ${o.queueNumber}`
-            speak(`Pesanan ${namaOrNomor}, silakan ke kasir.`)
+            const { prefix, suffix } = templateRef.current || {}
+            const teks = [prefix, `${namaOrNomor}.`, suffix].filter(Boolean).join(' ')
+            speak(teks || `Pesanan ${namaOrNomor}, silakan ke kasir.`)
           }
         }
         setOrders(data)
@@ -57,12 +79,17 @@ export default function PapanPanggilanPage() {
   // pengguna — tombol ini sengaja disediakan supaya operator warung bisa
   // "membuka" izin suara sekali saat menyalakan device ini.
   function enableSound() {
-    speak('Papan panggilan siap.')
+    const { prefix, suffix } = settings.announcementTemplate || {}
+    speak([prefix, suffix].filter(Boolean).join(' ') || 'Papan panggilan siap.')
   }
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-[var(--color-brand)] p-8 text-white">
-      <p className="font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight">Papan Panggilan</p>
+      {settings.storeLogo && (
+        <img src={settings.storeLogo} alt={settings.storeName} className="mb-3 h-14 w-14 rounded-full object-cover ring-2 ring-white/30" />
+      )}
+      <p className="font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight">{settings.storeName || 'Papan Panggilan'}</p>
+      <p className="mt-0.5 text-sm uppercase tracking-wide text-white/60">Papan Panggilan</p>
       <button onClick={enableSound} className="mt-2 rounded-full border border-white/30 px-4 py-1 text-xs text-white/70 hover:bg-white/10">
         🔊 Aktifkan Suara
       </button>

@@ -21,11 +21,9 @@ import apiClient from './client'
 //                                 nightly (authController.runRetentionCleanupCore).
 //                                 0/kosong = retensi mati, tidak menghapus apa pun.
 //   - announcementTemplate.{prefix,suffix} -> disediakan via GET /public,
-//                                 TAPI Papan Panggilan (PapanPanggilanPage.jsx)
-//                                 belum memanggilnya sama sekali saat ini -
-//                                 jadi mengubah field ini BELUM ada efek
-//                                 terlihat di layar panggilan sampai halaman
-//                                 itu di-wire ke /api/settings/public.
+//                                 dipakai Papan Panggilan (PapanPanggilanPage.jsx)
+//                                 untuk teks suara panggil & header toko —
+//                                 di-wire 27 Agustus 2026 (gap 1.7 audit).
 //   - modalAwalUsaha          -> TIDAK dibaca di mana pun di backend saat
 //                                 ini (Cash Flow Forecast pakai saldoAwal
 //                                 dari CashAccount, bukan dari Settings).
@@ -50,4 +48,14 @@ export async function fetchSettings() {
 export async function saveSettings(partialSettings) {
   const { data } = await apiClient.put('/api/settings', partialSettings)
   return data.settings
+}
+
+// GET /api/settings/public — TANPA AUTH. Dipakai halaman publik (login,
+// Papan Panggilan, Menu Digital) untuk identitas toko & template pengumuman.
+// Response: { storeName, storeLogo, announcementTemplate: {prefix, suffix} }
+// — backend selalu balikin default kalau admin belum pernah mengatur, jadi
+// field ini TIDAK PERNAH undefined/null.
+export async function fetchPublicSettings() {
+  const { data } = await apiClient.get('/api/settings/public')
+  return data
 }

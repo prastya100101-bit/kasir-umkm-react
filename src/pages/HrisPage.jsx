@@ -9,7 +9,10 @@ import {
   ajukanCuti,
   fetchCuti,
   decideCuti,
+  checkInKaryawan,
+  checkOutKaryawan,
 } from '../api/hris'
+import { fetchUsers } from '../api/accessControl'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -505,6 +508,134 @@ function ApproveCutiTab() {
 }
 
 // ============================================================
+// TAB: Absensikan Karyawan Lain (Super Admin — proxy check-in/out)
+// ============================================================
+function AbsensikanKaryawanTab() {
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+  const [rowResults, setRowResults] = useState({})
+
+  async function load() {
+    setLoading(true)
+    setError(null)
+    try {
+      setUsers(await fetchUsers({ active: true }))
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat daftar karyawan.'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  async function handleCheckIn(userId, name) {
+    setBusyId(userId)
+    setRowResults((r) => ({ ...r, [userId]: null }))
+    try {
+      const attendance = await checkInKaryawan(userId)
+      setRowResults((r) => ({
+        ...r,
+        [userId]: { type: 'success', message: `Check-in ${name} tercatat jam ${formatJam(attendance.checkIn)}.` },
+      }))
+    } catch (err) {
+      setRowResults((r) => ({ ...r, [userId]: { type: 'error', message: errMsg(err, 'Gagal check-in.') } }))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleCheckOut(userId, name) {
+    setBusyId(userId)
+    setRowResults((r) => ({ ...r, [userId]: null }))
+    try {
+      const result = await checkOutKaryawan(userId)
+      setRowResults((r) => ({
+        ...r,
+        [userId]: {
+          type: 'success',
+          message: `Check-out ${name} tercatat jam ${formatJam(result.attendance.checkOut)} (${
+            result.jamKerja ?? '—'
+          } jam kerja).`,
+        },
+      }))
+    } catch (err) {
+      setRowResults((r) => ({ ...r, [userId]: { type: 'error', message: errMsg(err, 'Gagal check-out.') } }))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <Card title="Absensikan Karyawan Lain">
+      <p className="mb-4 text-xs text-[var(--color-ink-soft)]">
+        Khusus Super Admin — dipakai kalau karyawan lupa absen sendiri lewat perangkatnya. Riwayat otomatis
+        ditandai "(diabsenkan oleh ...)" supaya tetap jelas ini bukan absen mandiri.
+      </p>
+      {error && <p className="mb-3 text-sm text-[var(--color-danger)]">{error}</p>}
+      {loading ? (
+        <p className="text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+      ) : users.length === 0 ? (
+        <p className="text-sm text-[var(--color-ink-soft)]">Tidak ada karyawan aktif.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-soft)]">
+                <th className="py-2 pr-4">Karyawan</th>
+                <th className="py-2 pr-4">Role</th>
+                <th className="py-2">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id} className="border-b border-[var(--color-border)] last:border-0 align-top">
+                  <td className="py-2 pr-4 font-medium">{u.name || u.username}</td>
+                  <td className="py-2 pr-4 text-[var(--color-ink-soft)]">{u.role?.name || '—'}</td>
+                  <td className="py-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleCheckIn(u.id, u.name || u.username)}
+                        disabled={busyId === u.id}
+                        className="rounded-md bg-[var(--color-brand)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                      >
+                        Check-in
+                      </button>
+                      <button
+                        onClick={() => handleCheckOut(u.id, u.name || u.username)}
+                        disabled={busyId === u.id}
+                        className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+                      >
+                        Check-out
+                      </button>
+                    </div>
+                    {rowResults[u.id] && (
+                      <p
+                        className={`mt-1.5 text-xs ${
+                          rowResults[u.id].type === 'success'
+                            ? 'text-[var(--color-success,#16a34a)]'
+                            : 'text-[var(--color-danger)]'
+                        }`}
+                      >
+                        {rowResults[u.id].message}
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ============================================================
 // PAGE
 // ============================================================
 const TABS_BASE = [
@@ -520,6 +651,7 @@ export default function HrisPage() {
     ...TABS_BASE,
     ...(isTimViewer ? [{ id: 'rekap', label: 'Rekap Tim' }] : []),
     ...(isSuperAdmin ? [{ id: 'approve', label: 'Approve Cuti' }] : []),
+    ...(isSuperAdmin ? [{ id: 'proxy', label: 'Absensikan Karyawan Lain' }] : []),
   ]
 
   const [tab, setTab] = useState('absensi')
@@ -547,6 +679,7 @@ export default function HrisPage() {
       {tab === 'cuti' && <CutiSayaTab />}
       {tab === 'rekap' && isTimViewer && <RekapTimTab />}
       {tab === 'approve' && isSuperAdmin && <ApproveCutiTab />}
+      {tab === 'proxy' && isSuperAdmin && <AbsensikanKaryawanTab />}
     </AppLayout>
   )
 }

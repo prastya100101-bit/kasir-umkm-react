@@ -69,3 +69,15 @@ export async function deletePromo(id) {
   const { data } = await apiClient.delete(`/api/promo/${id}`)
   return data
 }
+
+// GET /api/promo/active — dipanggil KasirPage untuk menerapkan promo otomatis.
+// verifyToken saja (tidak butuh page permission 'promo'), lihat komentar
+// backend promoController.getActivePromos. Response: { promos, activeNow }
+// — `activeNow` sudah difilter server (active + tanggalMulai/tanggalSelesai +
+// hariAktif + jamMulai/jamSelesai) tapi TETAP wajib dievaluasi ulang di
+// client (lihat src/utils/promoMatch.js) karena waktu bisa bergeser antara
+// sync & saat produk ditambah ke keranjang / checkout.
+export async function fetchActivePromo() {
+  const { data } = await apiClient.get('/api/promo/active')
+  return data
+}

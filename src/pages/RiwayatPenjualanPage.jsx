@@ -4,7 +4,8 @@ import { useAuth, ROLES } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
 import { fetchDashboardData } from '../api/dashboard'
-import { fetchSaleDetail, cancelSale } from '../api/kasir'
+import { fetchSaleDetail, cancelSale, returSale, fetchReturBySale } from '../api/kasir'
+import { fetchCashAccounts } from '../api/purchasing'
 import { formatRupiah } from '../utils/format'
 
 // ============================================================
@@ -84,6 +85,20 @@ function DetailModal({ saleId, onClose, canCancel, onCancelled }) {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState('')
 
+  const [returHistory, setReturHistory] = useState([])
+  const [showReturForm, setShowReturForm] = useState(false)
+  const [returQty, setReturQty] = useState({}) // { [productId]: qty string }
+  const [returMethod, setReturMethod] = useState('tunai')
+  const [returCashAccountId, setReturCashAccountId] = useState('')
+  const [returAlasan, setReturAlasan] = useState('')
+  const [cashAccounts, setCashAccounts] = useState([])
+  const [submittingRetur, setSubmittingRetur] = useState(false)
+  const [returError, setReturError] = useState('')
+
+  function reloadReturHistory() {
+    fetchReturBySale(saleId).then(setReturHistory).catch(() => {})
+  }
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -102,6 +117,59 @@ function DetailModal({ saleId, onClose, canCancel, onCancelled }) {
       cancelled = true
     }
   }, [saleId])
+
+  useEffect(() => {
+    reloadReturHistory()
+    fetchCashAccounts().then(setCashAccounts).catch(() => setCashAccounts([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saleId])
+
+  // Sisa qty yang masih boleh diretur per productId = qty jual dikurangi
+  // total qty yang sudah pernah diretur sebelumnya (dari returHistory) —
+  // backend juga menegakkan ini (QTY_EXCEEDS), ini cuma jaring pengaman UI.
+  const returSisaByProduct = useMemo(() => {
+    const map = new Map()
+    for (const it of sale?.items || []) map.set(it.productId, Number(it.qty))
+    for (const r of returHistory) {
+      for (const ri of r.items || []) {
+        map.set(ri.productId, (map.get(ri.productId) || 0) - Number(ri.qty))
+      }
+    }
+    return map
+  }, [sale, returHistory])
+
+  async function handleSubmitRetur() {
+    setReturError('')
+    const items = Object.entries(returQty)
+      .map(([productId, qty]) => ({ productId, qty: Number(qty) }))
+      .filter((it) => it.qty > 0)
+    if (items.length === 0) {
+      setReturError('Isi minimal satu qty retur')
+      return
+    }
+    if (returMethod !== 'kasbon' && !returCashAccountId) {
+      setReturError('Pilih rekening kas/bank untuk pengembalian dana')
+      return
+    }
+    setSubmittingRetur(true)
+    try {
+      await returSale({
+        saleId,
+        refundMethod: returMethod,
+        alasan: returAlasan,
+        items,
+        cashAccountId: returMethod !== 'kasbon' ? returCashAccountId : undefined,
+      })
+      setReturQty({})
+      setReturAlasan('')
+      setShowReturForm(false)
+      reloadReturHistory()
+    } catch (err) {
+      setReturError(errMsg(err, 'Gagal memproses retur'))
+    } finally {
+      setSubmittingRetur(false)
+    }
+  }
 
   async function handleCancel() {
     setCancelling(true)
@@ -205,6 +273,117 @@ function DetailModal({ saleId, onClose, canCancel, onCancelled }) {
             {sale.status === 'batal' && (
               <div className="rounded-lg bg-[var(--color-danger-tint)] p-3 text-xs text-[var(--color-danger)]">
                 Dibatalkan {sale.dibatalkanOleh ? `oleh ${sale.dibatalkanOleh}` : ''} — {sale.alasanBatal || 'tanpa alasan'}
+              </div>
+            )}
+
+            {returHistory.length > 0 && (
+              <div className="space-y-2 border-t border-[var(--color-border)] pt-3">
+                <p className="font-semibold text-[var(--color-ink)]">Riwayat Retur</p>
+                {returHistory.map((r) => (
+                  <div key={r.id} className="rounded-lg bg-[var(--color-canvas)] p-3 text-xs">
+                    <div className="flex justify-between text-[var(--color-ink-soft)]">
+                      <span>{formatWaktu(r.date)} · {PAY_METHOD_LABEL[r.refundMethod] || r.refundMethod}</span>
+                      <span className="figure font-semibold text-[var(--color-ink)]">{formatRupiah(r.total)}</span>
+                    </div>
+                    {r.alasan && <p className="mt-1 text-[var(--color-ink-soft)]">Alasan: {r.alasan}</p>}
+                    <ul className="mt-1 space-y-0.5">
+                      {r.items?.map((ri) => (
+                        <li key={ri.id} className="text-[var(--color-ink-soft)]">
+                          {ri.productName || ri.productId} × {Number(ri.qty)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {sale.status !== 'batal' && (
+              <div className="border-t border-[var(--color-border)] pt-3">
+                {!showReturForm ? (
+                  <button
+                    onClick={() => setShowReturForm(true)}
+                    className="text-xs text-[var(--color-accent)] hover:underline"
+                  >
+                    Ajukan retur
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="font-semibold text-[var(--color-ink)]">Ajukan Retur</p>
+                    <div className="space-y-1">
+                      {sale.items?.map((it) => {
+                        const sisa = returSisaByProduct.get(it.productId) ?? Number(it.qty)
+                        if (sisa <= 0) return null
+                        return (
+                          <div key={it.id} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="flex-1">{it.name} <span className="text-[var(--color-ink-soft)]">(sisa {sisa})</span></span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={sisa}
+                              value={returQty[it.productId] || ''}
+                              onChange={(e) =>
+                                setReturQty((prev) => ({ ...prev, [it.productId]: e.target.value }))
+                              }
+                              placeholder="0"
+                              className="w-16 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-right"
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={returMethod}
+                        onChange={(e) => setReturMethod(e.target.value)}
+                        className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs"
+                      >
+                        {Object.entries(PAY_METHOD_LABEL).map(([v, label]) => (
+                          <option key={v} value={v}>{label}</option>
+                        ))}
+                      </select>
+                      {returMethod !== 'kasbon' && (
+                        <select
+                          value={returCashAccountId}
+                          onChange={(e) => setReturCashAccountId(e.target.value)}
+                          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs"
+                        >
+                          <option value="">Pilih rekening...</option>
+                          {cashAccounts.map((ca) => (
+                            <option key={ca.id} value={ca.id}>{ca.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={returAlasan}
+                      onChange={(e) => setReturAlasan(e.target.value)}
+                      placeholder="Alasan retur (opsional)"
+                      className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                    />
+
+                    {returError && <p className="text-xs text-[var(--color-danger)]">{returError}</p>}
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSubmitRetur}
+                        disabled={submittingRetur}
+                        className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-50"
+                      >
+                        {submittingRetur ? 'Memproses...' : 'Proses Retur'}
+                      </button>
+                      <button
+                        onClick={() => setShowReturForm(false)}
+                        className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-ink-soft)]"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

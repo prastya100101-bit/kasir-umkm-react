@@ -72,3 +72,27 @@ export async function decideCuti(id, { approve, catatan } = {}) {
   })
   return data.leaveRequest
 }
+
+// ============================================================
+// Absensikan Karyawan Lain — proxy check-in/out, Super Admin saja di
+// backend (requireRole('Super Admin') di hrisRoutes.js). Note otomatis
+// ditandai server "(diabsenkan oleh <admin>)" — tidak perlu ditambah lagi
+// di client.
+// ============================================================
+
+export async function checkInKaryawan(userId, { note } = {}) {
+  const { data } = await apiClient.post('/api/hris/absensi/checkin-karyawan', {
+    userId,
+    id: crypto.randomUUID(),
+    note: note || undefined,
+  })
+  return data.attendance
+}
+
+export async function checkOutKaryawan(userId, { note } = {}) {
+  const { data } = await apiClient.post('/api/hris/absensi/checkout-karyawan', {
+    userId,
+    note: note || undefined,
+  })
+  return data // { attendance, jamKerja }
+}

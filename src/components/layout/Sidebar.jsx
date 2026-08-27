@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth, ROLES } from '../../context/AuthContext'
+import ChangePasswordModal from '../ChangePasswordModal'
 
 // Menu per role. Kasir sengaja dikasih menu paling ringkas —
 // dashboard 3-level artinya tiap role lihat porsi yang relevan buat dia saja.
@@ -43,6 +44,14 @@ const NAV_ITEMS = [
     group: 'operasional',
   },
   { to: '/margin', label: 'Margin Lokasi', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  // Rekomendasi Harga & Analisa Produk (AI) — backend requirePage('priceanalysis'),
+  // kemungkinan besar belum di-grant ke role selain Super Admin (sama pola
+  // Promo/Anomali). Kalau Manager/SPV dapat 403, atur lewat Manajemen Role > Izin
+  // Halaman.
+  { to: '/analisa-harga', label: 'Rekomendasi Harga (AI)', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  // Prediksi Stok (AI) — backend requirePage('stockpredict'), sama pola akses
+  // dengan Rekomendasi Harga di atas.
+  { to: '/prediksi-stok', label: 'Prediksi Stok (AI)', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   { to: '/purchasing', label: 'Purchasing', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   { to: '/produksi', label: 'Produksi', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Aset Tetap — backend assetRoutes.js cuma verifyToken buat baca (semua
@@ -114,6 +123,13 @@ const NAV_ITEMS = [
   // Super-Admin-only). SubCabang Kasir/Crew bisa jadi sisi pengirim, Cabang
   // Manager/SPV sisi penerima yang konfirmasi.
   { to: '/cash-transfer', label: 'Transfer Kas', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'keuangan' },
+  // Rekening Kas & Bank — CRUD akun + transfer pembukuan internal
+  // (financeController.js: listCashAccounts/createCashAccount/updateCashAccount/
+  // deleteCashAccount/transferBetweenCashAccounts). Lihat non tunai — beda dari
+  // Transfer Kas di atas yang transfer FISIK antar SubCabang. Mutasi
+  // create/update/delete Super-Admin-only di backend, halaman sendiri yang
+  // menyembunyikan tombolnya untuk role lain.
+  { to: '/rekening', label: 'Rekening Kas & Bank', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
   { to: '/stock-rebalancing', label: 'Stock Rebalancing', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   { to: '/rekonsiliasi', label: 'Rekonsiliasi', roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Rekonsiliasi Bank — beda dari "Rekonsiliasi" di atas (itu dashboard
@@ -151,6 +167,7 @@ function SearchIcon() {
 export default function Sidebar() {
   const { role, logout, user } = useAuth()
   const [query, setQuery] = useState('')
+  const [showChangePassword, setShowChangePassword] = useState(false)
 
   const items = useMemo(() => NAV_ITEMS.filter((item) => item.roles.includes(role)), [role])
 
@@ -248,12 +265,20 @@ export default function Sidebar() {
           {role}
         </span>
         <button
+          onClick={() => setShowChangePassword(true)}
+          className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
+        >
+          Ganti Password
+        </button>
+        <button
           onClick={logout}
           className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
         >
           Keluar
         </button>
       </div>
+
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
     </aside>
   )
 }

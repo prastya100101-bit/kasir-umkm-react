@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { useAuth } from '../context/AuthContext'
-import { formatRupiah } from '../utils/format'
+import { formatRupiah, formatDateTime } from '../utils/format'
 import {
   PAGE_KEYS,
   fetchRoles,
@@ -16,10 +16,21 @@ import {
   deactivateUser,
   unlockUser,
 } from '../api/accessControl'
+import {
+  fetchActiveSessions,
+  forceLogoutSession,
+  fetchLoginAttempts,
+  purgeOldLoginAttempts,
+  fetchAuditLog,
+  purgeOldActivityLogs,
+  resetTestingData,
+} from '../api/auth'
+import { fetchSettings } from '../api/settings'
 
 const TABS = [
   { id: 'roles', label: 'Manajemen Role' },
   { id: 'users', label: 'Manajemen User' },
+  { id: 'keamanan', label: 'Keamanan' },
 ]
 
 function errMsg(err, fallback) {
@@ -691,6 +702,653 @@ function UserFormModal({ user, roles, onClose, onSaved }) {
 }
 
 // ============================================================
+// TAB KEAMANAN (gap 1.8b–f) — sub-tab: Sesi Aktif, Log Percobaan Login,
+// Audit Log Aktivitas, Reset Data Testing. Semua Super-Admin only (halaman
+// ini sendiri sudah digerbangi ProtectedRoute allowedRoles=[SUPER_ADMIN]
+// di App.jsx, jadi tidak perlu cek role tambahan di sini).
+// ============================================================
+
+const SECURITY_SUBTABS = [
+  { id: 'sesi', label: 'Sesi Aktif' },
+  { id: 'login-attempts', label: 'Log Percobaan Login' },
+  { id: 'audit-log', label: 'Audit Log Aktivitas' },
+  { id: 'reset', label: 'Reset Data Testing' },
+]
+
+const LOGIN_ATTEMPT_REASON_LABELS = {
+  user_not_found: 'Username tidak ditemukan',
+  inactive: 'Akun nonaktif',
+  locked: 'Akun sedang terkunci',
+  no_backend_password: 'Akun belum diaktifkan (belum ada password)',
+  wrong_password: 'Password salah',
+}
+
+function reasonLabel(reason) {
+  if (!reason) return '—'
+  return LOGIN_ATTEMPT_REASON_LABELS[reason] || reason
+}
+
+// Kartu ringkasan kecil dipakai berulang di beberapa panel Keamanan —
+// prinsip produk "informatif": kartu ringkasan sebelum tabel detail.
+function StatCard({ label, value, tone = 'neutral' }) {
+  const tones = {
+    neutral: 'text-[var(--color-ink)]',
+    green: 'text-[var(--color-success,#16a34a)]',
+    red: 'text-[var(--color-danger)]',
+    amber: 'text-amber-600',
+  }
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+      <p className="text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold ${tones[tone] || tones.neutral}`}>{value}</p>
+    </div>
+  )
+}
+
+// Form kecil "Hapus data lama sebelum tanggal X" — dipakai identik oleh
+// panel Log Percobaan Login & Audit Log Aktivitas (backend & kontrak sama
+// persis: body {beforeDate}, balikan {deletedCount}).
+function PurgeOldForm({ label, onPurge, disabled }) {
+  const [beforeDate, setBeforeDate] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+
+  async function handlePurge() {
+    if (!beforeDate) return
+    if (
+      !window.confirm(
+        `Hapus PERMANEN seluruh ${label.toLowerCase()} sebelum ${beforeDate}? Aksi ini tidak bisa dibatalkan.`
+      )
+    )
+      return
+    setBusy(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await onPurge(beforeDate)
+      setResult(res.deletedCount)
+    } catch (err) {
+      setError(errMsg(err, `Gagal menghapus ${label.toLowerCase()} lama.`))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+      <p className="mb-2 text-sm font-medium text-[var(--color-ink)]">Hapus {label} Lama (Retensi Manual)</p>
+      <p className="mb-3 text-xs text-[var(--color-ink-soft)]">
+        Retensi otomatis tiap malam sudah bisa diatur di Pengaturan Bisnis (kalau diisi). Form ini untuk hapus manual
+        sekali jalan, mis. sebelum retensi otomatis diaktifkan.
+      </p>
+      {error && <ErrorBanner message={error} />}
+      {result !== null && (
+        <p className="mb-3 rounded-lg bg-[var(--color-success-tint,#dcfce7)] px-3 py-2 text-xs text-[var(--color-success,#16a34a)]">
+          {result} baris berhasil dihapus permanen.
+        </p>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Hapus sebelum tanggal">
+          <input
+            type="date"
+            className={inputClass}
+            value={beforeDate}
+            onChange={(e) => setBeforeDate(e.target.value)}
+          />
+        </Field>
+        <button
+          onClick={handlePurge}
+          disabled={disabled || busy || !beforeDate}
+          className="mb-3 rounded-md border border-[var(--color-danger)] px-4 py-2 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-50"
+        >
+          {busy ? 'Menghapus...' : 'Hapus Permanen'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function SessionsPanel() {
+  const [sessions, setSessions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [busyToken, setBusyToken] = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setSessions(await fetchActiveSessions())
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat daftar sesi aktif.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function handleForceLogout(session) {
+    const label = session.isCurrent ? 'sesi INI (device yang sedang kamu pakai sekarang)' : `sesi ${session.userName}`
+    if (!window.confirm(`Paksa logout ${label}? User itu wajib login ulang setelah ini.`)) return
+    setBusyToken(session.token)
+    setError(null)
+    try {
+      setSessions(await forceLogoutSession(session.token))
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memaksa logout sesi ini.'))
+    } finally {
+      setBusyToken(null)
+    }
+  }
+
+  return (
+    <div>
+      <ErrorBanner message={error} />
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard label="Total Sesi Aktif" value={loading ? '—' : sessions.length} />
+        <StatCard
+          label="User Unik Login"
+          value={loading ? '—' : new Set(sessions.map((s) => s.userId)).size}
+        />
+      </div>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm text-[var(--color-ink-soft)]">
+          Semua device yang sedang login (belum kedaluwarsa/logout). "Paksa Logout" langsung menghapus sesi itu.
+        </p>
+        <button
+          onClick={load}
+          className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-bg-soft)]"
+        >
+          Segarkan
+        </button>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] card-elevated">
+        {loading ? (
+          <p className="p-5 text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+        ) : sessions.length === 0 ? (
+          <p className="p-5 text-sm text-[var(--color-ink-soft)]">Tidak ada sesi aktif.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-[var(--color-bg-soft)] text-left text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
+              <tr>
+                <th className="px-4 py-3">User</th>
+                <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Device</th>
+                <th className="px-4 py-3">Login Pada</th>
+                <th className="px-4 py-3">Kedaluwarsa</th>
+                <th className="px-4 py-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((s) => (
+                <tr key={s.token} className="border-t border-[var(--color-border)]">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-[var(--color-ink)]">{s.userName}</p>
+                    <p className="text-xs text-[var(--color-ink-soft)]">@{s.username}</p>
+                  </td>
+                  <td className="px-4 py-3">{s.role}</td>
+                  <td className="px-4 py-3 text-[var(--color-ink-soft)]">{s.device || '—'}</td>
+                  <td className="px-4 py-3 text-[var(--color-ink-soft)]">{formatDateTime(s.createdAt)}</td>
+                  <td className="px-4 py-3 text-[var(--color-ink-soft)]">{formatDateTime(s.expiresAt)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end items-center gap-2">
+                      {s.isCurrent && <Badge tone="green">Sesi Ini</Badge>}
+                      <button
+                        onClick={() => handleForceLogout(s)}
+                        disabled={busyToken === s.token}
+                        className="rounded-md border border-[var(--color-danger)] px-2.5 py-1 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-50"
+                      >
+                        {busyToken === s.token ? '...' : 'Paksa Logout'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LoginAttemptsPanel() {
+  const [rows, setRows] = useState([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [filters, setFilters] = useState({ from: '', to: '', username: '', success: '' })
+
+  const load = useCallback(async (f) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetchLoginAttempts(f)
+      setRows(res.rows)
+      setTotal(res.total)
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat log percobaan login.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load(filters)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const failedCount = rows.filter((r) => !r.success).length
+
+  return (
+    <div>
+      <ErrorBanner message={error} />
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard label="Ditampilkan" value={loading ? '—' : rows.length} />
+        <StatCard label="Total Cocok Filter" value={loading ? '—' : total} />
+        <StatCard label="Gagal (di halaman ini)" value={loading ? '—' : failedCount} tone="red" />
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+        <Field label="Dari tanggal">
+          <input
+            type="date"
+            className={inputClass}
+            value={filters.from}
+            onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+          />
+        </Field>
+        <Field label="Sampai tanggal">
+          <input
+            type="date"
+            className={inputClass}
+            value={filters.to}
+            onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+          />
+        </Field>
+        <Field label="Username">
+          <input
+            type="text"
+            placeholder="Cari username..."
+            className={inputClass}
+            value={filters.username}
+            onChange={(e) => setFilters({ ...filters, username: e.target.value })}
+          />
+        </Field>
+        <Field label="Status">
+          <select
+            className={inputClass}
+            value={filters.success}
+            onChange={(e) => setFilters({ ...filters, success: e.target.value })}
+          >
+            <option value="">Semua</option>
+            <option value="true">Sukses</option>
+            <option value="false">Gagal</option>
+          </select>
+        </Field>
+        <button
+          onClick={() => load(filters)}
+          className="mb-3 rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
+        >
+          Terapkan Filter
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] card-elevated">
+        {loading ? (
+          <p className="p-5 text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+        ) : rows.length === 0 ? (
+          <p className="p-5 text-sm text-[var(--color-ink-soft)]">Tidak ada percobaan login yang cocok dengan filter.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-[var(--color-bg-soft)] text-left text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
+              <tr>
+                <th className="px-4 py-3">Waktu</th>
+                <th className="px-4 py-3">Username</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Alasan</th>
+                <th className="px-4 py-3">Device</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-[var(--color-border)]">
+                  <td className="px-4 py-3 text-[var(--color-ink-soft)]">{formatDateTime(r.timestamp)}</td>
+                  <td className="px-4 py-3 font-medium text-[var(--color-ink)]">{r.username}</td>
+                  <td className="px-4 py-3">
+                    {r.success ? <Badge tone="green">Sukses</Badge> : <Badge tone="red">Gagal</Badge>}
+                  </td>
+                  <td className="px-4 py-3 text-[var(--color-ink-soft)]">{reasonLabel(r.reason)}</td>
+                  <td className="px-4 py-3 text-[var(--color-ink-soft)]">{r.device || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {total > rows.length && (
+        <p className="mt-2 text-xs text-[var(--color-ink-soft)]">
+          Menampilkan {rows.length} dari {total} baris cocok — persempit filter tanggal/username untuk melihat sisanya.
+        </p>
+      )}
+
+      <PurgeOldForm label="Log Percobaan Login" onPurge={purgeOldLoginAttempts} />
+    </div>
+  )
+}
+
+const AUDIT_ACTION_TONE = { create: 'green', update: 'amber', delete: 'red' }
+
+function AuditLogPanel() {
+  const [rows, setRows] = useState([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [filters, setFilters] = useState({ from: '', to: '', tableName: '', action: '' })
+  const [openRow, setOpenRow] = useState(null)
+
+  const load = useCallback(async (f) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetchAuditLog(f)
+      setRows(res.rows)
+      setTotal(res.total)
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat audit log.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load(filters)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div>
+      <ErrorBanner message={error} />
+
+      <div className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-xs text-amber-700">
+        <strong>Catatan cross-check backend:</strong> tabel <code>AuditLog</code> di database sudah siap & endpoint
+        baca/hapus di sini sudah berfungsi penuh — tapi belum ada controller mana pun di backend saat ini yang
+        benar-benar MENULIS baris ke tabel ini (cuma dipakai baca &amp; dihapus lewat halaman ini, serta ikut terhapus
+        total oleh Reset Data Testing). Jadi tabel di bawah realistis akan tampak kosong sampai instrumentasi
+        pencatatan aksi admin (create/update/delete) ditambahkan di controller-controller terkait — itu di luar
+        cakupan gap ini, dicatat sebagai temuan untuk rencana selanjutnya.
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+        <Field label="Dari tanggal">
+          <input
+            type="date"
+            className={inputClass}
+            value={filters.from}
+            onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+          />
+        </Field>
+        <Field label="Sampai tanggal">
+          <input
+            type="date"
+            className={inputClass}
+            value={filters.to}
+            onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+          />
+        </Field>
+        <Field label="Nama Tabel">
+          <input
+            type="text"
+            placeholder="mis. product, sale..."
+            className={inputClass}
+            value={filters.tableName}
+            onChange={(e) => setFilters({ ...filters, tableName: e.target.value })}
+          />
+        </Field>
+        <Field label="Aksi">
+          <select
+            className={inputClass}
+            value={filters.action}
+            onChange={(e) => setFilters({ ...filters, action: e.target.value })}
+          >
+            <option value="">Semua</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+          </select>
+        </Field>
+        <button
+          onClick={() => load(filters)}
+          className="mb-3 rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
+        >
+          Terapkan Filter
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] card-elevated">
+        {loading ? (
+          <p className="p-5 text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+        ) : rows.length === 0 ? (
+          <p className="p-5 text-sm text-[var(--color-ink-soft)]">
+            Tidak ada baris audit log (lihat catatan di atas soal instrumentasi penulisan yang belum ada).
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-[var(--color-bg-soft)] text-left text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
+              <tr>
+                <th className="px-4 py-3">Waktu</th>
+                <th className="px-4 py-3">User</th>
+                <th className="px-4 py-3">Aksi</th>
+                <th className="px-4 py-3">Tabel</th>
+                <th className="px-4 py-3">Record ID</th>
+                <th className="px-4 py-3 text-right">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <Fragment key={r.id}>
+                  <tr className="border-t border-[var(--color-border)]">
+                    <td className="px-4 py-3 text-[var(--color-ink-soft)]">{formatDateTime(r.timestamp)}</td>
+                    <td className="px-4 py-3 font-medium text-[var(--color-ink)]">
+                      {r.userName}
+                      {r.actionName && <span className="block text-xs font-normal text-[var(--color-ink-soft)]">{r.actionName}</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={AUDIT_ACTION_TONE[r.action] || 'neutral'}>{r.action}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-[var(--color-ink-soft)]">{r.tableName}</td>
+                    <td className="px-4 py-3 text-[var(--color-ink-soft)]">{r.recordId}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => setOpenRow(openRow === r.id ? null : r.id)}
+                        className="text-xs font-medium text-[var(--color-accent)] hover:underline"
+                      >
+                        {openRow === r.id ? 'Tutup' : 'Lihat'}
+                      </button>
+                    </td>
+                  </tr>
+                  {openRow === r.id && (
+                    <tr className="border-t border-[var(--color-border)] bg-[var(--color-bg-soft)]">
+                      <td colSpan={6} className="px-4 py-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <p className="mb-1 text-xs font-semibold uppercase text-[var(--color-ink-soft)]">Sebelum</p>
+                            <pre className="max-h-48 overflow-auto rounded-md bg-[var(--color-surface)] p-2 text-xs">
+                              {r.before ? JSON.stringify(r.before, null, 2) : '—'}
+                            </pre>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-xs font-semibold uppercase text-[var(--color-ink-soft)]">Sesudah</p>
+                            <pre className="max-h-48 overflow-auto rounded-md bg-[var(--color-surface)] p-2 text-xs">
+                              {r.after ? JSON.stringify(r.after, null, 2) : '—'}
+                            </pre>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {total > rows.length && (
+        <p className="mt-2 text-xs text-[var(--color-ink-soft)]">
+          Menampilkan {rows.length} dari {total} baris cocok — persempit filter untuk melihat sisanya.
+        </p>
+      )}
+
+      <PurgeOldForm label="Audit Log Aktivitas" onPurge={purgeOldActivityLogs} />
+    </div>
+  )
+}
+
+const RESET_PRESERVED = [
+  'User, Role, & Izin Halaman (supaya masih bisa login setelah reset)',
+  'Pengaturan Bisnis & Konfigurasi Approval',
+  'Chart of Account, Rekening Kas/Bank, & Cost Center (konfigurasi dasar akuntansi)',
+]
+
+function ResetTestingPanel() {
+  const [storeName, setStoreName] = useState(null)
+  const [loadingSettings, setLoadingSettings] = useState(true)
+  const [confirmText, setConfirmText] = useState('')
+  const [ack, setAck] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [summary, setSummary] = useState(null)
+
+  useEffect(() => {
+    fetchSettings()
+      .then((s) => setStoreName(s.storeName || ''))
+      .catch(() => setStoreName(''))
+      .finally(() => setLoadingSettings(false))
+  }, [])
+
+  async function handleReset() {
+    if (!window.confirm('BENAR-BENAR yakin? Semua data transaksi & master data bisnis akan terhapus PERMANEN. Semua orang (termasuk kamu) akan ter-logout dan wajib login ulang.')) {
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setSummary(null)
+    try {
+      const res = await resetTestingData(confirmText)
+      setSummary(res.summary)
+      setConfirmText('')
+      setAck(false)
+    } catch (err) {
+      setError(errMsg(err, 'Gagal mereset data testing.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const canSubmit = ack && confirmText && !loadingSettings && confirmText === storeName
+
+  return (
+    <div>
+      <div className="mb-4 rounded-lg bg-[var(--color-danger-tint)] px-4 py-3 text-sm text-[var(--color-danger)]">
+        <p className="mb-1 font-semibold">⚠️ Operasi paling destruktif di seluruh sistem.</p>
+        <p>
+          Semua data transaksi (penjualan, retur, kasbon, stok, akuntansi, HRIS, dsb.) & master data bisnis (produk,
+          pelanggan, supplier, dst.) akan dihapus PERMANEN dan tidak bisa dikembalikan. Dipakai HANYA untuk reset
+          lingkungan testing/demo kembali ke kondisi baru migrasi — jangan pernah dijalankan di data produksi asli.
+        </p>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+        <p className="mb-2 text-sm font-medium text-[var(--color-ink)]">Yang TETAP DIPERTAHANKAN (tidak ikut terhapus)</p>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-ink-soft)]">
+          {RESET_PRESERVED.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-[var(--color-ink-soft)]">
+          Semua sesi login (termasuk sesi kamu sendiri) & log percobaan login juga ikut terhapus — semua orang wajib
+          login ulang setelah reset ini selesai.
+        </p>
+      </div>
+
+      <ErrorBanner message={error} />
+      {summary && (
+        <div className="mb-4 rounded-xl border border-[var(--color-success,#16a34a)]/30 bg-[var(--color-success-tint,#dcfce7)] p-4">
+          <p className="mb-2 text-sm font-semibold text-[var(--color-success,#16a34a)]">
+            Reset berhasil. Ringkasan baris terhapus per tabel:
+          </p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-[var(--color-ink)] sm:grid-cols-3">
+            {Object.entries(summary)
+              .filter(([, count]) => count > 0)
+              .map(([table, count]) => (
+                <p key={table}>
+                  {table}: <span className="font-medium">{count}</span>
+                </p>
+              ))}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+        <Field label={loadingSettings ? 'Memuat nama toko...' : `Ketik ulang nama toko untuk konfirmasi: "${storeName}"`}>
+          <input
+            type="text"
+            className={inputClass}
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            disabled={loadingSettings}
+            placeholder="Ketik persis nama toko..."
+          />
+        </Field>
+        <label className="mb-4 flex items-start gap-2 text-sm text-[var(--color-ink-soft)]">
+          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5" />
+          Saya paham aksi ini menghapus data PERMANEN dan tidak bisa dibatalkan.
+        </label>
+        <button
+          onClick={handleReset}
+          disabled={!canSubmit || busy}
+          className="w-full rounded-md bg-[var(--color-danger)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          {busy ? 'Mereset...' : 'Reset Data Testing Sekarang'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function SecurityTab() {
+  const [subTab, setSubTab] = useState('sesi')
+
+  return (
+    <div>
+      <div className="mb-5 flex flex-wrap gap-1">
+        {SECURITY_SUBTABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setSubTab(t.id)}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+              subTab === t.id
+                ? 'bg-[var(--color-brand)] text-white'
+                : 'bg-[var(--color-bg-soft)] text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {subTab === 'sesi' && <SessionsPanel />}
+      {subTab === 'login-attempts' && <LoginAttemptsPanel />}
+      {subTab === 'audit-log' && <AuditLogPanel />}
+      {subTab === 'reset' && <ResetTestingPanel />}
+    </div>
+  )
+}
+
+// ============================================================
 // SHELL
 // ============================================================
 export default function AccessControlPage() {
@@ -717,6 +1375,7 @@ export default function AccessControlPage() {
 
       {tab === 'roles' && <RoleTab />}
       {tab === 'users' && <UserTab currentUserId={user?.id} />}
+      {tab === 'keamanan' && <SecurityTab />}
     </AppLayout>
   )
 }

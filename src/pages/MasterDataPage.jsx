@@ -28,6 +28,11 @@ import {
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  fetchCustomerDetail,
+  adjustCustomerPoints,
+  fetchCustomerKasbon,
+  payCustomerKasbon,
+  importProducts,
 } from '../api/masterData'
 import {
   fetchAllLocations,
@@ -36,6 +41,8 @@ import {
   createSubCabang,
   updateSubCabang,
 } from '../api/locations'
+import { fetchCashAccountsFull } from '../api/rekening'
+import { parseCsv } from '../utils/csv'
 
 const TABS = [
   { id: 'kategori', label: 'Kategori' },
@@ -925,6 +932,331 @@ function CustomerForm({ initial, onSubmit, onClose, busy }) {
   )
 }
 
+// Modal koreksi/bonus poin manual (Super Admin saja). Menampilkan saldo
+// poin terkini + riwayat terakhir, plus form tambah/kurangi dengan alasan.
+function PointsAdjustModal({ customer, onClose, onSuccess }) {
+  const [detail, setDetail] = useState(null)
+  const [loadingDetail, setLoadingDetail] = useState(true)
+  const [jenis, setJenis] = useState('earn')
+  const [poin, setPoin] = useState('')
+  const [catatan, setCatatan] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const loadDetail = useCallback(async () => {
+    setLoadingDetail(true)
+    try {
+      const res = await fetchCustomerDetail(customer.id)
+      setDetail(res)
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat riwayat poin.'))
+    } finally {
+      setLoadingDetail(false)
+    }
+  }, [customer.id])
+
+  useEffect(() => {
+    loadDetail()
+  }, [loadDetail])
+
+  const saldoSekarang = detail?.points ?? customer.points ?? 0
+  const jumlahPoin = Number(poin || 0)
+  const melebihiSaldo = jenis === 'redeem' && jumlahPoin > saldoSekarang
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (jumlahPoin <= 0) {
+      setError('Jumlah poin harus lebih dari 0.')
+      return
+    }
+    if (!catatan.trim()) {
+      setError('Alasan koreksi wajib diisi.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await adjustCustomerPoints(customer.id, { jenis, poin: jumlahPoin, catatan: catatan.trim() })
+      setPoin('')
+      setCatatan('')
+      await loadDetail()
+      onSuccess()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyesuaikan poin.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title={`Koreksi Poin — ${customer.name}`} onClose={onClose}>
+      <ErrorBanner message={error} />
+
+      <div className="mb-4 rounded-lg bg-[var(--color-surface-alt,#f8f8f8)] px-4 py-3">
+        <p className="text-xs text-[var(--color-ink-soft)]">Saldo poin saat ini</p>
+        <p className="figure text-2xl font-semibold text-[var(--color-ink)]">
+          {loadingDetail ? '...' : saldoSekarang}
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <Field label="Jenis koreksi *">
+          <select className={inputClass} value={jenis} onChange={(e) => setJenis(e.target.value)}>
+            <option value="earn">Tambah poin (earn)</option>
+            <option value="redeem">Kurangi poin (redeem)</option>
+          </select>
+        </Field>
+        <Field label="Jumlah poin *">
+          <input
+            type="number"
+            min="1"
+            className={inputClass}
+            value={poin}
+            onChange={(e) => setPoin(e.target.value)}
+            required
+          />
+        </Field>
+        {melebihiSaldo && (
+          <p className="mb-3 -mt-2 text-xs text-[var(--color-danger)]">
+            Melebihi saldo poin pelanggan ({saldoSekarang}). Server akan menolak.
+          </p>
+        )}
+        <Field label="Alasan koreksi *">
+          <input
+            className={inputClass}
+            placeholder="mis. Kompensasi komplain, bonus ulang tahun, dll."
+            value={catatan}
+            onChange={(e) => setCatatan(e.target.value)}
+            required
+          />
+        </Field>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
+            Tutup
+          </button>
+          <button
+            type="submit"
+            disabled={busy || !poin || !catatan.trim()}
+            className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {busy ? 'Menyimpan...' : 'Simpan Koreksi'}
+          </button>
+        </div>
+      </form>
+
+      <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+        <p className="mb-2 text-sm font-medium text-[var(--color-ink)]">Riwayat Poin Terakhir</p>
+        {loadingDetail ? (
+          <p className="text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+        ) : !detail?.pointsHistory?.length ? (
+          <p className="text-sm text-[var(--color-ink-soft)]">Belum ada riwayat poin.</p>
+        ) : (
+          <ul className="max-h-48 space-y-1.5 overflow-y-auto text-sm">
+            {detail.pointsHistory.map((h) => (
+              <li key={h.id} className="flex items-center justify-between gap-2 rounded-md bg-[var(--color-surface-alt,#f8f8f8)] px-3 py-1.5">
+                <span className="text-[var(--color-ink-soft)]">{h.catatan || '—'}</span>
+                <span className={`figure font-medium ${h.jenis === 'earn' ? 'text-[var(--color-success,#16a34a)]' : 'text-[var(--color-danger)]'}`}>
+                  {h.jenis === 'earn' ? '+' : '-'}
+                  {h.poin}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+// Modal kasbon (piutang) pelanggan — tersedia untuk semua role yang bisa
+// menulis di tab ini (backend tidak membatasi role khusus, beda dari Poin).
+// Menampilkan ringkasan sisa kasbon + daftar kasbon dengan progress bar,
+// dan form bayar cicilan per kasbon yang masih "belum_lunas".
+function KasbonModal({ customer, onClose, onSuccess }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [cashAccounts, setCashAccounts] = useState([])
+  const [payingId, setPayingId] = useState(null)
+  const [amount, setAmount] = useState('')
+  const [cashAccountId, setCashAccountId] = useState('')
+  const [catatan, setCatatan] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetchCustomerKasbon(customer.id)
+      setData(res)
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat kasbon.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [customer.id])
+
+  useEffect(() => {
+    load()
+    fetchCashAccountsFull().then(setCashAccounts).catch(() => setCashAccounts([]))
+  }, [load])
+
+  function openPayForm(kasbon) {
+    setPayingId(kasbon.id)
+    setAmount('')
+    setCashAccountId('')
+    setCatatan('')
+    setError(null)
+  }
+
+  async function handlePay(e, kasbon) {
+    e.preventDefault()
+    const jumlah = Number(amount || 0)
+    const sisa = Number(kasbon.total) - Number(kasbon.terbayar)
+    if (jumlah <= 0) {
+      setError('Jumlah pembayaran harus lebih dari 0.')
+      return
+    }
+    if (jumlah > sisa + 1) {
+      setError(`Jumlah pembayaran melebihi sisa kasbon (Rp${sisa.toLocaleString('id-ID')}).`)
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await payCustomerKasbon(kasbon.id, { amount: jumlah, cashAccountId, catatan: catatan.trim() })
+      setPayingId(null)
+      await load()
+      onSuccess()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal mencatat pembayaran kasbon.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const sisaKasbon = data?.sisaKasbon ?? 0
+
+  return (
+    <Modal title={`Kasbon — ${customer.name}`} onClose={onClose}>
+      <ErrorBanner message={error} />
+
+      <div className="mb-4 rounded-lg bg-[var(--color-surface-alt,#f8f8f8)] px-4 py-3">
+        <p className="text-xs text-[var(--color-ink-soft)]">Total Kasbon Belum Lunas</p>
+        <p className="figure text-2xl font-semibold text-[var(--color-ink)]">
+          {loading ? '...' : `Rp${sisaKasbon.toLocaleString('id-ID')}`}
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+      ) : !data?.kasbons?.length ? (
+        <p className="text-sm text-[var(--color-ink-soft)]">Pelanggan ini belum pernah kasbon.</p>
+      ) : (
+        <ul className="max-h-96 space-y-3 overflow-y-auto">
+          {data.kasbons.map((k) => {
+            const total = Number(k.total)
+            const terbayar = Number(k.terbayar)
+            const sisa = total - terbayar
+            const pct = total > 0 ? Math.min(100, Math.round((terbayar / total) * 100)) : 0
+            const lunas = k.status === 'lunas'
+            return (
+              <li key={k.id} className="rounded-lg border border-[var(--color-border)] p-3">
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="font-medium text-[var(--color-ink)]">
+                    {k.sale?.code || k.id.slice(0, 8)}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      lunas
+                        ? 'bg-[var(--color-success-bg,#dcfce7)] text-[var(--color-success,#16a34a)]'
+                        : 'bg-[var(--color-warning-bg,#fef3c7)] text-[var(--color-warning,#b45309)]'
+                    }`}
+                  >
+                    {lunas ? 'Lunas' : 'Belum Lunas'}
+                  </span>
+                </div>
+                <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-[var(--color-border)]">
+                  <div
+                    className="h-full bg-[var(--color-brand)]"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-[var(--color-ink-soft)]">
+                  <span>
+                    Terbayar Rp{terbayar.toLocaleString('id-ID')} / Rp{total.toLocaleString('id-ID')}
+                  </span>
+                  {!lunas && <span>Sisa Rp{sisa.toLocaleString('id-ID')}</span>}
+                </div>
+
+                {!lunas && payingId !== k.id && (
+                  <button
+                    onClick={() => openPayForm(k)}
+                    className="mt-2 text-sm text-[var(--color-brand)] hover:underline"
+                  >
+                    Bayar Cicilan
+                  </button>
+                )}
+
+                {payingId === k.id && (
+                  <form onSubmit={(e) => handlePay(e, k)} className="mt-3 border-t border-[var(--color-border)] pt-3">
+                    <Field label="Jumlah bayar *">
+                      <input
+                        type="number"
+                        min="1"
+                        className={inputClass}
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        required
+                      />
+                    </Field>
+                    <Field label="Rekening Kas/Bank tujuan">
+                      <select
+                        className={inputClass}
+                        value={cashAccountId}
+                        onChange={(e) => setCashAccountId(e.target.value)}
+                      >
+                        <option value="">(default — kas tunai)</option>
+                        {cashAccounts.map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            {acc.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Catatan">
+                      <input
+                        className={inputClass}
+                        value={catatan}
+                        onChange={(e) => setCatatan(e.target.value)}
+                      />
+                    </Field>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPayingId(null)}
+                        className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={busy || !amount}
+                        className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                      >
+                        {busy ? 'Menyimpan...' : 'Simpan Pembayaran'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </Modal>
+  )
+}
+
 function CustomerTab({ canWrite, isSuperAdmin }) {
   const [customers, setCustomers] = useState([])
   const [pagination, setPagination] = useState(null)
@@ -933,6 +1265,8 @@ function CustomerTab({ canWrite, isSuperAdmin }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [modal, setModal] = useState(null)
+  const [pointsModal, setPointsModal] = useState(null)
+  const [kasbonModal, setKasbonModal] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -1025,6 +1359,14 @@ function CustomerTab({ canWrite, isSuperAdmin }) {
                         Edit
                       </button>
                       {isSuperAdmin && (
+                        <button onClick={() => setPointsModal(c)} className="mr-3 text-[var(--color-brand)] hover:underline">
+                          Poin
+                        </button>
+                      )}
+                      <button onClick={() => setKasbonModal(c)} className="mr-3 text-[var(--color-brand)] hover:underline">
+                        Kasbon
+                      </button>
+                      {isSuperAdmin && (
                         <button onClick={() => handleDelete(c.id)} className="text-[var(--color-danger)] hover:underline">
                           Hapus
                         </button>
@@ -1059,6 +1401,20 @@ function CustomerTab({ canWrite, isSuperAdmin }) {
             busy={busy}
           />
         </Modal>
+      )}
+      {pointsModal && (
+        <PointsAdjustModal
+          customer={pointsModal}
+          onClose={() => setPointsModal(null)}
+          onSuccess={load}
+        />
+      )}
+      {kasbonModal && (
+        <KasbonModal
+          customer={kasbonModal}
+          onClose={() => setKasbonModal(null)}
+          onSuccess={load}
+        />
       )}
     </div>
   )
@@ -1236,6 +1592,261 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
   )
 }
 
+// Alias nama kolom CSV yang diterima (case-insensitive, spasi/underscore
+// diabaikan) -> field kanonik yang dipakai backend importProducts.
+// Mendukung header Bahasa Indonesia & Inggris supaya user tidak perlu ganti
+// nama kolom di file export mereka.
+const PRODUCT_COLUMN_ALIASES = {
+  name: 'name', nama: 'name', namaproduk: 'name',
+  sku: 'sku',
+  category: 'category', kategori: 'category',
+  unit: 'unit', satuan: 'unit',
+  costprice: 'costPrice', hargabeli: 'costPrice', hargamodal: 'costPrice',
+  sellprice: 'sellPrice', hargajual: 'sellPrice',
+  stock: 'stock', stok: 'stock', stokawal: 'stock',
+  minstock: 'minStock', stokminimum: 'minStock', minimumstok: 'minStock',
+}
+
+function normalizeHeaderKey(h) {
+  return h.toLowerCase().replace(/[\s_-]/g, '')
+}
+
+// Petakan 1 baris hasil parseCsv (keyed by header ASLI) ke field kanonik.
+// Kolom yang headernya tidak dikenali diabaikan (bukan error) — supaya CSV
+// dengan kolom ekstra (mis. catatan internal user) tidak menggagalkan baris.
+function mapProductRow(rawRow) {
+  const mapped = {}
+  for (const [header, value] of Object.entries(rawRow)) {
+    const canonical = PRODUCT_COLUMN_ALIASES[normalizeHeaderKey(header)]
+    if (canonical) mapped[canonical] = value
+  }
+  return mapped
+}
+
+const CSV_TEMPLATE = 'name,sku,category,unit,costPrice,sellPrice,stock,minStock\nContoh Produk,SKU001,Minuman,pcs,5000,8000,20,5\n'
+
+function downloadCsvTemplate() {
+  const blob = new Blob([CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'template-impor-produk.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// Modal Impor Produk massal (Super Admin saja). Alur: pilih file CSV -> parse
+// & preview di client dulu (tidak langsung kirim) -> user konfirmasi -> kirim
+// sebagai JSON {rows} ke backend -> tampilkan ringkasan hasil per baris.
+function ImportProductModal({ onClose, onSuccess }) {
+  const [fileName, setFileName] = useState('')
+  const [parsedRows, setParsedRows] = useState([])
+  const [parseError, setParseError] = useState(null)
+  const [unrecognizedHeaders, setUnrecognizedHeaders] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [summary, setSummary] = useState(null)
+
+  function handleFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    setParseError(null)
+    setSummary(null)
+    setError(null)
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const { headers, rows } = parseCsv(String(reader.result))
+        if (rows.length === 0) {
+          setParseError('File CSV kosong atau tidak terbaca (pastikan baris pertama adalah header).')
+          setParsedRows([])
+          return
+        }
+        const recognized = headers.filter((h) => PRODUCT_COLUMN_ALIASES[normalizeHeaderKey(h)])
+        if (!recognized.some((h) => normalizeHeaderKey(h) === 'name' || normalizeHeaderKey(h) === 'nama')) {
+          setParseError('Kolom "name"/"nama" wajib ada di header CSV.')
+          setParsedRows([])
+          return
+        }
+        setUnrecognizedHeaders(headers.filter((h) => !PRODUCT_COLUMN_ALIASES[normalizeHeaderKey(h)]))
+        setParsedRows(rows.map(mapProductRow))
+      } catch {
+        setParseError('Gagal membaca file. Pastikan formatnya CSV yang valid.')
+        setParsedRows([])
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  async function handleImport() {
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await importProducts(parsedRows)
+      setSummary(result)
+      if (result.created > 0 || result.updated > 0) onSuccess()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal mengimpor produk.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Impor Produk Massal" onClose={onClose}>
+      <ErrorBanner message={error} />
+
+      {!summary && (
+        <>
+          <div className="mb-4 rounded-lg bg-[var(--color-surface-alt,#f8f8f8)] px-4 py-3 text-sm text-[var(--color-ink-soft)]">
+            <p className="mb-1">
+              Kolom yang dikenali: <b>name/nama*</b>, sku, category/kategori, unit/satuan, costPrice/hargaBeli,
+              sellPrice/hargaJual, stock/stok, minStock/stokMinimum. Baris pertama harus header.
+            </p>
+            <p>
+              SKU yang cocok dengan produk yang sudah ada akan di-<b>update</b> (stok TIDAK ditimpa — pakai
+              Penyesuaian Stok kalau perlu koreksi). SKU kosong/baru akan membuat produk baru.
+            </p>
+            <button type="button" onClick={downloadCsvTemplate} className="mt-2 font-medium text-[var(--color-brand)] hover:underline">
+              Unduh Template CSV
+            </button>
+          </div>
+
+          <Field label="File CSV *">
+            <input type="file" accept=".csv,text/csv" onChange={handleFile} className={inputClass} />
+          </Field>
+
+          {parseError && (
+            <p className="mb-3 text-sm text-[var(--color-danger)]">{parseError}</p>
+          )}
+
+          {unrecognizedHeaders.length > 0 && parsedRows.length > 0 && (
+            <p className="mb-3 text-xs text-[var(--color-ink-soft)]">
+              Kolom diabaikan (tidak dikenali): {unrecognizedHeaders.join(', ')}
+            </p>
+          )}
+
+          {parsedRows.length > 0 && (
+            <div className="mb-4">
+              <p className="mb-2 text-sm font-medium text-[var(--color-ink)]">
+                Pratinjau — {fileName} ({parsedRows.length} baris)
+              </p>
+              <div className="max-h-64 overflow-auto rounded-lg border border-[var(--color-border)]">
+                <table className="w-full text-left text-xs">
+                  <thead className="sticky top-0 bg-[var(--color-surface)]">
+                    <tr className="border-b border-[var(--color-border)] text-[var(--color-ink-soft)]">
+                      <th className="px-3 py-1.5 font-medium">Nama</th>
+                      <th className="px-3 py-1.5 font-medium">SKU</th>
+                      <th className="px-3 py-1.5 font-medium">Kategori</th>
+                      <th className="px-3 py-1.5 font-medium">Satuan</th>
+                      <th className="px-3 py-1.5 font-medium text-right">Beli</th>
+                      <th className="px-3 py-1.5 font-medium text-right">Jual</th>
+                      <th className="px-3 py-1.5 font-medium text-right">Stok</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsedRows.slice(0, 50).map((r, i) => (
+                      <tr key={i} className="border-b border-[var(--color-border)] last:border-0">
+                        <td className="px-3 py-1.5">{r.name || <span className="text-[var(--color-danger)]">(kosong)</span>}</td>
+                        <td className="px-3 py-1.5 text-[var(--color-ink-soft)]">{r.sku || '—'}</td>
+                        <td className="px-3 py-1.5 text-[var(--color-ink-soft)]">{r.category || '—'}</td>
+                        <td className="px-3 py-1.5 text-[var(--color-ink-soft)]">{r.unit || 'pcs'}</td>
+                        <td className="px-3 py-1.5 figure text-right">{r.costPrice || 0}</td>
+                        <td className="px-3 py-1.5 figure text-right">{r.sellPrice || 0}</td>
+                        <td className="px-3 py-1.5 figure text-right">{r.stock || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {parsedRows.length > 50 && (
+                <p className="mt-1 text-xs text-[var(--color-ink-soft)]">
+                  Menampilkan 50 dari {parsedRows.length} baris. Semua baris tetap akan diimpor.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
+              Batal
+            </button>
+            <button
+              type="button"
+              disabled={busy || parsedRows.length === 0}
+              onClick={handleImport}
+              className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {busy ? 'Mengimpor...' : `Impor ${parsedRows.length || ''} Baris`}
+            </button>
+          </div>
+        </>
+      )}
+
+      {summary && (
+        <div>
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            <div className="rounded-lg bg-[var(--color-success-tint,#dcfce7)] px-3 py-2 text-center">
+              <p className="figure text-xl font-semibold text-[var(--color-success,#16a34a)]">{summary.created}</p>
+              <p className="text-xs text-[var(--color-ink-soft)]">Produk Baru</p>
+            </div>
+            <div className="rounded-lg bg-[var(--color-brand-tint)] px-3 py-2 text-center">
+              <p className="figure text-xl font-semibold text-[var(--color-brand)]">{summary.updated}</p>
+              <p className="text-xs text-[var(--color-ink-soft)]">Diupdate</p>
+            </div>
+            <div className="rounded-lg bg-[var(--color-danger-tint)] px-3 py-2 text-center">
+              <p className="figure text-xl font-semibold text-[var(--color-danger)]">{summary.errors.length}</p>
+              <p className="text-xs text-[var(--color-ink-soft)]">Gagal</p>
+            </div>
+          </div>
+          {summary.stockIgnoredForUpdate > 0 && (
+            <p className="mb-3 text-xs text-[var(--color-ink-soft)]">
+              {summary.stockIgnoredForUpdate} baris update punya kolom stok berbeda dari stok berjalan — nilai stok di
+              CSV DIABAIKAN untuk produk yang sudah ada (pakai tab Penyesuaian Stok kalau memang perlu dikoreksi).
+            </p>
+          )}
+          {summary.errors.length > 0 && (
+            <div className="mb-4 max-h-40 overflow-y-auto rounded-lg border border-[var(--color-danger)] p-3">
+              <p className="mb-1 text-sm font-medium text-[var(--color-danger)]">Baris gagal:</p>
+              <ul className="space-y-1 text-xs text-[var(--color-ink-soft)]">
+                {summary.errors.map((e, i) => (
+                  <li key={i}>
+                    Baris {e.row}: {e.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            {summary.errors.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSummary(null)
+                  setParsedRows([])
+                  setFileName('')
+                }}
+                className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]"
+              >
+                Impor Ulang (baris gagal saja)
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
+            >
+              Selesai
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
   const [products, setProducts] = useState([])
   const [pagination, setPagination] = useState(null)
@@ -1250,6 +1861,7 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
   const [bundleProduct, setBundleProduct] = useState(null)
   const [allProducts, setAllProducts] = useState([])
   const [busy, setBusy] = useState(false)
+  const [importModal, setImportModal] = useState(false)
 
   // Daftar semua produk aktif (tanpa paginasi) khusus untuk dropdown
   // komponen di Modal Bundle — beda dari `products` yang dipaginasi untuk
@@ -1346,8 +1958,16 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
         </select>
         {canWrite && (
           <button
+            onClick={() => setImportModal(true)}
+            className="ml-auto rounded-md border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
+          >
+            Impor Produk
+          </button>
+        )}
+        {canWrite && (
+          <button
             onClick={() => setModal('new')}
-            className="ml-auto rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
+            className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
           >
             + Produk Baru
           </button>
@@ -1451,6 +2071,9 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
           canWrite={canWrite}
           onClose={() => setBundleProduct(null)}
         />
+      )}
+      {importModal && (
+        <ImportProductModal onClose={() => setImportModal(false)} onSuccess={load} />
       )}
     </div>
   )

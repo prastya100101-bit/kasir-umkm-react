@@ -161,3 +161,24 @@ export async function searchRawMaterialItems(search) {
   const { data } = await apiClient.get('/api/bahan-baku', { params: { search } })
   return data.slice(0, 10)
 }
+
+// ============================================================
+// LOG MUTASI STOK — controllers/stockController.js, mount '/api/stok/movements'
+// GABUNGAN dari SEMUA sumber (checkout, retur, penyesuaian, transfer,
+// opname) karena semua nulis ke tabel StockMovement yang sama.
+//
+// PENTING: backend WAJIB productId ATAU rawMaterialId (400 kalau
+// dua-duanya kosong) — tidak ada mode "semua item sekaligus", jadi tab
+// ini didesain "pilih 1 item dulu, baru tampil riwayatnya", bukan tabel
+// bebas-filter seperti direncanakan awal di dokumen audit.
+// Backend juga TIDAK dukung filter tanggal/tipe di query — otomatis
+// discope ke lokasi user lewat scopeWhere(req) (server-side, bukan
+// param client), dan hasilnya sudah urut date desc. Filter tanggal/tipe
+// di sini dilakukan di CLIENT setelah data diambil (dataset per-item
+// biasanya kecil, jadi tidak perlu pagination server).
+// ============================================================
+export async function fetchStockMovements({ productId, rawMaterialId }) {
+  const params = productId ? { productId } : { rawMaterialId }
+  const { data } = await apiClient.get('/api/stok/movements', { params })
+  return data
+}

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { authStorage } from '../api/client'
-import { login as loginRequest, fetchCurrentUser } from '../api/auth'
+import { login as loginRequest, fetchCurrentUser, logout as logoutRequest } from '../api/auth'
 
 const AuthContext = createContext(null)
 
@@ -58,9 +58,25 @@ export function AuthProvider({ children }) {
     }
   }
 
-  function logout() {
-    authStorage.clearToken()
-    setUser(null)
+  // Gap 1.8b: sebelumnya cuma clearToken() lokal — session row di server
+  // TIDAK pernah terhapus, jadi masih nongol di daftar "Sesi Aktif" (Super
+  // Admin > Keamanan) seolah-olah device ini masih login padahal user
+  // sudah klik Keluar. Sekarang panggil POST /api/auth/logout dulu supaya
+  // session-nya benar-benar mati di server.
+  //
+  // Tetap bersihkan token & state lokal di `finally` APAPUN hasil call
+  // server-nya (token sudah expired, server tidak terjangkau, dll) — supaya
+  // user tidak pernah nyangkut di layar yang masih "kelihatan login" cuma
+  // karena request logout gagal.
+  async function logout() {
+    try {
+      await logoutRequest()
+    } catch (err) {
+      // Sengaja diabaikan — lihat komentar di atas.
+    } finally {
+      authStorage.clearToken()
+      setUser(null)
+    }
   }
 
   // PATCH 25 Agustus 2026: database production ternyata punya 2 role dengan

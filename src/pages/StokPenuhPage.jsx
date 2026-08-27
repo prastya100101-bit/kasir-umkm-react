@@ -21,6 +21,7 @@ import {
   cancelOpnameSession,
   approveOpnameSession,
   rejectOpnameSession,
+  fetchStockMovements,
 } from '../api/stockPenuh'
 import {
   STATUS_LABELS,
@@ -34,6 +35,7 @@ const TABS = [
   { id: 'penyesuaian', label: 'Penyesuaian Stok' },
   { id: 'transfer', label: 'Transfer Stok' },
   { id: 'opname', label: 'Stock Opname' },
+  { id: 'mutasi', label: 'Log Mutasi Stok' },
   { id: 'prediksi', label: 'Prediksi Stok (AI)' },
 ]
 
@@ -77,6 +79,28 @@ const APPROVAL_LABEL = {
   approved: 'Disetujui',
   rejected: 'Ditolak',
 }
+
+const MOVEMENT_TYPE_LABEL = {
+  masuk: 'Masuk',
+  keluar: 'Keluar',
+  adjust: 'Penyesuaian',
+  transfer: 'Transfer',
+}
+
+const MOVEMENT_TYPE_TONE = {
+  masuk: 'bg-[var(--color-success-tint)] text-[var(--color-success)]',
+  keluar: 'bg-[var(--color-danger-tint)] text-[var(--color-danger)]',
+  adjust: 'bg-[var(--color-warning-tint,#fef3c7)] text-[var(--color-warning,#b45309)]',
+  transfer: 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]',
+}
+
+const MOVEMENT_TYPE_FILTERS = [
+  { id: '', label: 'Semua Tipe' },
+  { id: 'masuk', label: 'Masuk' },
+  { id: 'keluar', label: 'Keluar' },
+  { id: 'adjust', label: 'Penyesuaian' },
+  { id: 'transfer', label: 'Transfer' },
+]
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -1299,6 +1323,173 @@ function OpnameTab({ subCabangOptions, defaultSubCabangId, isSuperAdmin }) {
 }
 
 // ============================================================
+// TAB LOG MUTASI STOK — GET /api/stok/movements. Backend WAJIB productId
+// ATAU rawMaterialId (tidak ada mode "semua item"), jadi alurnya:
+// pilih 1 item dulu (ItemPicker yang sama dengan Penyesuaian/Transfer) →
+// baru tampil riwayat lengkapnya. Filter tanggal & tipe dilakukan di
+// client setelah data diambil (lihat catatan di api/stockPenuh.js).
+// ============================================================
+function LogMutasiTab() {
+  const [itemType, setItemType] = useState('product')
+  const [item, setItem] = useState(null)
+  const [movements, setMovements] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [typeFilter, setTypeFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  const load = useCallback(async () => {
+    if (!item) return
+    setLoading(true)
+    setError(null)
+    try {
+      const params =
+        itemType === 'product' ? { productId: item.id } : { rawMaterialId: item.id }
+      const data = await fetchStockMovements(params)
+      setMovements(data)
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat log mutasi stok.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [item, itemType])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const filtered = movements.filter((m) => {
+    if (typeFilter && m.type !== typeFilter) return false
+    const d = new Date(m.date)
+    if (dateFrom && d < new Date(dateFrom)) return false
+    if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false
+    return true
+  })
+
+  const totalMasuk = filtered
+    .filter((m) => m.type === 'masuk')
+    .reduce((sum, m) => sum + Number(m.qty), 0)
+  const totalKeluar = filtered
+    .filter((m) => m.type === 'keluar')
+    .reduce((sum, m) => sum + Number(m.qty), 0)
+
+  return (
+    <div>
+      {error && (
+        <div className="mb-4 rounded-lg bg-[var(--color-danger-tint)] px-4 py-2.5 text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
+      <div className="mb-4 max-w-md rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+        <p className="mb-2 text-sm font-medium text-[var(--color-ink)]">Pilih item</p>
+        <ItemPicker
+          itemType={itemType}
+          onItemTypeChange={(t) => {
+            setItemType(t)
+            setMovements([])
+          }}
+          item={item}
+          onSelect={(v) => {
+            setItem(v)
+            setMovements([])
+          }}
+        />
+      </div>
+
+      {!item ? (
+        <div className="flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
+          <p className="text-sm text-[var(--color-ink-soft)]">
+            Pilih produk atau bahan baku dulu untuk melihat riwayat mutasinya.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 card-elevated">
+              <p className="text-xs text-[var(--color-ink-soft)]">Total Masuk</p>
+              <p className="figure text-lg font-semibold text-[var(--color-success)]">
+                +{totalMasuk} {item.unit}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 card-elevated">
+              <p className="text-xs text-[var(--color-ink-soft)]">Total Keluar</p>
+              <p className="figure text-lg font-semibold text-[var(--color-danger)]">
+                -{totalKeluar} {item.unit}
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            <div className="flex gap-1 rounded-md border border-[var(--color-border)] p-1 text-sm">
+              {MOVEMENT_TYPE_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setTypeFilter(f.id)}
+                  className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                    typeFilter === f.id
+                      ? 'bg-[var(--color-brand)] text-white'
+                      : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <Field label="Dari tanggal">
+              <input type="date" className={inputClass} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            </Field>
+            <Field label="Sampai tanggal">
+              <input type="date" className={inputClass} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            </Field>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] card-elevated">
+            {loading ? (
+              <p className="p-5 text-sm text-[var(--color-ink-soft)]">Memuat...</p>
+            ) : filtered.length === 0 ? (
+              <p className="p-5 text-sm text-[var(--color-ink-soft)]">Tidak ada mutasi yang cocok dengan filter.</p>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-border)] text-[var(--color-ink-soft)]">
+                    <th className="px-5 py-2.5 font-medium">Tanggal</th>
+                    <th className="px-5 py-2.5 font-medium">Tipe</th>
+                    <th className="px-5 py-2.5 font-medium text-right">Qty</th>
+                    <th className="px-5 py-2.5 font-medium">Catatan</th>
+                    <th className="px-5 py-2.5 font-medium">Referensi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((m) => (
+                    <tr key={m.id} className="border-b border-[var(--color-border)] last:border-0">
+                      <td className="px-5 py-3 text-[var(--color-ink-soft)]">
+                        {new Date(m.date).toLocaleString('id-ID')}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${MOVEMENT_TYPE_TONE[m.type] || ''}`}>
+                          {MOVEMENT_TYPE_LABEL[m.type] || m.type}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 figure text-right font-medium text-[var(--color-ink)]">
+                        {m.type === 'keluar' ? '-' : '+'}
+                        {Number(m.qty)} {item.unit}
+                      </td>
+                      <td className="px-5 py-3 text-[var(--color-ink-soft)]">{m.note || '—'}</td>
+                      <td className="px-5 py-3 text-[var(--color-ink-soft)]">{m.ref || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
 // HALAMAN
 // ============================================================
 export default function StokPenuhPage() {
@@ -1355,6 +1546,8 @@ export default function StokPenuhPage() {
           defaultSubCabangId={defaultSubCabangId}
           isSuperAdmin={isSuperAdmin}
         />
+      ) : tab === 'mutasi' ? (
+        <LogMutasiTab />
       ) : (
         <PrediksiStokTab
           subCabangOptions={subCabangOptions}

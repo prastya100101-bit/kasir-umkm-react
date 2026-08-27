@@ -13,6 +13,7 @@ import ProduksiPage from './pages/ProduksiPage'
 import PayrollPage from './pages/PayrollPage'
 import HrisPage from './pages/HrisPage'
 import CashTransferPage from './pages/CashTransferPage'
+import RekeningPage from './pages/RekeningPage'
 import KasirPage from './pages/KasirPage'
 import RiwayatPenjualanPage from './pages/RiwayatPenjualanPage'
 import MejaPage from './pages/MejaPage'
@@ -32,6 +33,8 @@ import PromoPage from './pages/PromoPage'
 import ExpensePage from './pages/ExpensePage'
 import FinanceForecastPage from './pages/FinanceForecastPage'
 import AnomalyPage from './pages/AnomalyPage'
+import PriceAnalysisPage from './pages/PriceAnalysisPage'
+import StockPredictionPage from './pages/StockPredictionPage'
 import { ROLES } from './context/AuthContext'
 
 export default function App() {
@@ -154,6 +157,17 @@ export default function App() {
                 allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW]}
               >
                 <CashTransferPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/rekening"
+            element={
+              <ProtectedRoute
+                allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}
+              >
+                <RekeningPage />
               </ProtectedRoute>
             }
           />
@@ -347,6 +361,34 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]}>
                 <FinanceForecastPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Rekomendasi Harga & Analisa Produk (AI) — backend priceAnalysisRoutes.js:
+              GET '/' dan '/config' digerbangi requirePage('priceanalysis'), PATCH
+              '/config' Super Admin only (PriceAnalysisPage.jsx sendiri yang
+              menyembunyikan tombol "Atur Ambang Batas" kalau bukan Super Admin). Sama
+              pola dengan Dashboard Anomali/Prediksi Stok — kalau Manager/SPV dapat
+              403, atur lewat Manajemen Role > Izin Halaman. */}
+          <Route
+            path="/analisa-harga"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
+                <PriceAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Prediksi Stok (AI) — backend stockPredictionRoutes.js: GET '/prediksi'
+              dan '/prediksi/config' digerbangi requirePage('stockpredict'), PATCH
+              '/prediksi/config' Super Admin only. Sama pola akses dengan Analisa
+              Harga di atas. */}
+          <Route
+            path="/prediksi-stok"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
+                <StockPredictionPage />
               </ProtectedRoute>
             }
           />

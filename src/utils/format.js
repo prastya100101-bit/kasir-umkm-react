@@ -10,6 +10,16 @@ export function formatRupiah(value) {
   }).format(num)
 }
 
+// Format tanggal+jam lengkap gaya Indonesia, dipakai untuk log (Sesi Aktif,
+// Log Percobaan Login, Audit Log) — konsisten di seluruh tabel log.
+export function formatDateTime(dateLike) {
+  if (!dateLike) return '—'
+  return new Intl.DateTimeFormat('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(dateLike))
+}
+
 // Bandingkan tanggal ISO/Date terhadap "hari ini" di timezone lokal browser.
 export function isToday(dateLike) {
   const d = new Date(dateLike)

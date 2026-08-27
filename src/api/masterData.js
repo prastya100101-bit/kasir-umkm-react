@@ -85,6 +85,19 @@ export async function deactivateProduct(id) {
   return data
 }
 
+// Impor massal — controllers/productController.js importProducts, Super
+// Admin saja di backend (requireRole di productRoutes.js).
+//
+// PENTING: backend TIDAK menerima file mentah (bukan multipart/multer) —
+// beda dari BankReconciliation (`api/bankReconciliation.js`) yang upload
+// file CSV langsung. Endpoint ini mengharapkan JSON `{ rows: [...] }` yang
+// SUDAH diparse jadi array of object di client dulu (lihat utils/csv.js +
+// ImportProductModal). Jangan pakai pola FormData di sini.
+export async function importProducts(rows) {
+  const { data } = await apiClient.post('/api/produk/import', { rows })
+  return data.importSummary
+}
+
 // ============================================================
 // BAHAN BAKU — controllers/rawMaterialController.js, mount '/api/bahan-baku'
 // list()/getById() bisa diakses semua role login; create/update/delete
@@ -178,5 +191,51 @@ export async function updateCustomer(id, { name, phone }) {
 // riwayat transaksi (Sale/Kasbon/Preorder).
 export async function deleteCustomer(id) {
   const { data } = await apiClient.delete(`/api/pelanggan/${id}`)
+  return data
+}
+
+// Detail pelanggan + 20 riwayat poin terakhir (pointsHistory).
+export async function fetchCustomerDetail(id) {
+  const { data } = await apiClient.get(`/api/pelanggan/${id}`)
+  return data
+}
+
+// Super Admin saja di backend. Koreksi/bonus poin manual — earn/redeem
+// otomatis saat checkout tetap lewat controller Kasir, tidak lewat sini.
+// jenis: 'earn' (tambah) | 'redeem' (kurangi). `poin` selalu > 0, backend
+// yang menentukan tanda +/- dari `jenis`. `id` disuplai klien untuk
+// idempotency (pola sama dengan Kasbon/CashAccount transfer).
+export async function adjustCustomerPoints(id, { jenis, poin, catatan }) {
+  const adjustId = crypto.randomUUID()
+  const { data } = await apiClient.post(`/api/pelanggan/${id}/points/adjust`, {
+    id: adjustId,
+    jenis,
+    poin,
+    catatan: catatan || undefined,
+  })
+  return data
+}
+
+// Kasbon (piutang pelanggan) — controllers/customerController.js
+// listKasbon/payKasbon. Endpoint tidak dibatasi role tertentu di backend
+// (berlaku semua role login), beda dari Poin yang Super-Admin-only.
+
+// Daftar kasbon pelanggan + payments per kasbon + sisaKasbon total (belum lunas).
+export async function fetchCustomerKasbon(customerId) {
+  const { data } = await apiClient.get(`/api/pelanggan/${customerId}/kasbon`)
+  return data
+}
+
+// `id` pembayaran disuplai klien untuk idempotency (pola sama dengan
+// Poin/CashAccount transfer). cashAccountId opsional — kalau kosong,
+// server pakai rekening kas default (payMethod 'tunai').
+export async function payCustomerKasbon(kasbonId, { amount, cashAccountId, catatan }) {
+  const paymentId = crypto.randomUUID()
+  const { data } = await apiClient.post(`/api/pelanggan/kasbon/${kasbonId}/pay`, {
+    id: paymentId,
+    amount,
+    cashAccountId: cashAccountId || undefined,
+    catatan: catatan || undefined,
+  })
   return data
 }

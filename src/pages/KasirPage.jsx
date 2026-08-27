@@ -15,12 +15,19 @@ import {
   closeShift,
   checkoutSale,
 } from '../api/kasir'
+import { fetchActivePromo } from '../api/promo'
+import { findBestPromoForProduct, computePromoDiscount, isPromoActiveNow, isPromoApplicableToProduct } from '../utils/promoMatch'
 import {
   connectBluetoothPrinter,
   printReceiptViaBluetooth,
   printReceiptViaBrowser,
   getConnectedPrinterName,
 } from '../utils/receiptPrinter'
+
+// Promo aktif disinkron ulang tiap interval ini (ms) supaya promo berbasis
+// jam (jamMulai/jamSelesai) tetap akurat selama shift berjalan lama, tanpa
+// perlu refresh halaman. 60 detik cukup responsif tanpa membebani server.
+const PROMO_SYNC_INTERVAL_MS = 60_000
 
 const PAY_METHODS = [
   { id: 'tunai', label: 'Tunai' },
@@ -35,7 +42,11 @@ const QUICK_CASH = [0, 5000, 10000, 20000, 50000, 100000]
 
 function cartTotals(cart, { headerDiscount, customer, poinDipakai, payMethod, cashGiven }) {
   const subtotal = cart.reduce((a, i) => a + i.price * i.qty, 0)
-  const itemDiscountTotal = cart.reduce((a, i) => a + Number(i.itemDiscount || 0), 0)
+  // Dipisah supaya kasir bisa lihat jelas mana diskon dari Promo (otomatis)
+  // vs diskon manual yang mereka ketik sendiri di keranjang.
+  const promoDiscountTotal = cart.reduce((a, i) => a + (i.promoId ? Number(i.itemDiscount || 0) : 0), 0)
+  const manualDiscountTotal = cart.reduce((a, i) => a + (i.promoId ? 0 : Number(i.itemDiscount || 0)), 0)
+  const itemDiscountTotal = promoDiscountTotal + manualDiscountTotal
   const maxPoin = customer ? Number(customer.points || 0) : 0
   const poinDipakaiClamped = Math.max(0, Math.min(Number(poinDipakai || 0), maxPoin))
   // 1 poin = Rp 100 — samakan dengan POIN_KE_RUPIAH di app.js lama.
@@ -43,7 +54,17 @@ function cartTotals(cart, { headerDiscount, customer, poinDipakai, payMethod, ca
   const discount = itemDiscountTotal + Number(headerDiscount || 0) + poinDiscount
   const total = Math.max(0, subtotal - discount)
   const change = payMethod === 'tunai' ? Math.max(0, Number(cashGiven || 0) - total) : 0
-  return { subtotal, itemDiscountTotal, poinDipakai: poinDipakaiClamped, poinDiscount, discount, total, change }
+  return {
+    subtotal,
+    itemDiscountTotal,
+    promoDiscountTotal,
+    manualDiscountTotal,
+    poinDipakai: poinDipakaiClamped,
+    poinDiscount,
+    discount,
+    total,
+    change,
+  }
 }
 
 // ---------------- Buka Shift ----------------
@@ -223,17 +244,23 @@ function ProductImagePlaceholder() {
   )
 }
 
-function ProductCard({ product, onAdd }) {
+function ProductCard({ product, onAdd, promo }) {
   const stock = product.stockAtLocation ?? 0
   const outOfStock = stock <= 0
   const isPaket = /paket|combo/i.test(product.category?.name || '')
+  const hasPromo = Boolean(promo)
+  const promoLabel = promo
+    ? promo.discountType === 'persen'
+      ? `-${Number(promo.discountValue)}%`
+      : `-${formatRupiah(promo.discountValue)}`
+    : ''
 
   return (
     <button
       onClick={() => onAdd(product)}
       disabled={outOfStock}
       className={`card-elevated group flex flex-col overflow-hidden rounded-xl border bg-[var(--color-surface)] text-left transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${
-        isPaket ? 'border-[var(--color-accent)]' : 'border-[var(--color-border)]'
+        hasPromo ? 'border-[var(--color-warning)]' : isPaket ? 'border-[var(--color-accent)]' : 'border-[var(--color-border)]'
       }`}
     >
       {/* Area foto — rasio persegi, konsisten walau foto belum ada */}
@@ -246,8 +273,16 @@ function ProductCard({ product, onAdd }) {
           </div>
         )}
         {isPaket && (
-          <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--color-danger)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+          <span className={`absolute left-1.5 top-1.5 rounded-md bg-[var(--color-danger)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${hasPromo ? 'top-1.5' : ''}`}>
             Paket
+          </span>
+        )}
+        {hasPromo && (
+          <span
+            title={`Promo: ${promo.name}`}
+            className={`absolute right-1.5 top-1.5 rounded-md bg-[var(--color-warning)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white`}
+          >
+            🏷️ Promo {promoLabel}
           </span>
         )}
         {outOfStock && (
@@ -292,6 +327,9 @@ function CartRow({ item, onChangeQty, onRemove, onEditDiscount }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-[var(--color-ink)]">{item.name}</p>
           <p className="figure text-xs text-[var(--color-ink-soft)]">{formatRupiah(item.price)} / {item.unit}</p>
+          {item.promoId && (
+            <p className="truncate text-[11px] font-medium text-[var(--color-warning)]">✓ Promo "{item.promoName}" diterapkan</p>
+          )}
         </div>
         <button onClick={() => onRemove(item.productId)} className="text-[var(--color-danger)]" title="Hapus">
           🗑️
@@ -327,6 +365,14 @@ function CartRow({ item, onChangeQty, onRemove, onEditDiscount }) {
               className="figure w-20 rounded-md border border-[var(--color-border)] px-1.5 py-0.5 text-right text-xs"
             />
           </div>
+        ) : item.promoId ? (
+          <button
+            onClick={() => { setDiscountInput(item.itemDiscount || 0); setEditingDiscount(true) }}
+            title={`Promo otomatis: ${item.promoName}. Ketuk untuk ganti diskon manual.`}
+            className="flex items-center gap-1 rounded-full bg-[var(--color-warning-tint)] px-2 py-0.5 text-xs font-medium text-[var(--color-warning)]"
+          >
+            🏷️ Promo -{formatRupiah(item.itemDiscount)}
+          </button>
         ) : (
           <button
             onClick={() => setEditingDiscount(true)}
@@ -405,6 +451,10 @@ function CheckoutModal({ cart, subCabangId, shiftId, onClose, onSuccess }) {
         qty: i.qty,
         price: i.price,
         itemDiscount: i.itemDiscount || 0,
+        // promoId: server hitung ulang & validasi ulang diskonnya dari promo
+        // ini (mengabaikan itemDiscount di atas untuk item ini) — supaya
+        // nilai diskon promo tidak bisa dimanipulasi dari client.
+        promoId: i.promoId || undefined,
       })),
       discount: Number(headerDiscount || 0) + totals.poinDiscount,
       payments: paymentsArr,
@@ -502,7 +552,17 @@ function CheckoutModal({ cart, subCabangId, shiftId, onClose, onSuccess }) {
         {/* Ringkasan */}
         <div className="receipt-divider mt-4 pt-3 text-sm">
           <div className="flex justify-between"><span className="text-[var(--color-ink-soft)]">Subtotal</span><span className="figure">{formatRupiah(totals.subtotal)}</span></div>
-          <div className="flex justify-between"><span className="text-[var(--color-ink-soft)]">Diskon</span><span className="figure">- {formatRupiah(totals.discount)}</span></div>
+          {totals.promoDiscountTotal > 0 && (
+            <div className="flex justify-between text-[var(--color-warning)]">
+              <span>🏷️ Diskon Promo</span><span className="figure">- {formatRupiah(totals.promoDiscountTotal)}</span>
+            </div>
+          )}
+          {(totals.manualDiscountTotal > 0 || Number(headerDiscount || 0) > 0) && (
+            <div className="flex justify-between"><span className="text-[var(--color-ink-soft)]">Diskon Lain</span><span className="figure">- {formatRupiah(totals.manualDiscountTotal + Number(headerDiscount || 0))}</span></div>
+          )}
+          {totals.poinDiscount > 0 && (
+            <div className="flex justify-between"><span className="text-[var(--color-ink-soft)]">Poin Dipakai</span><span className="figure">- {formatRupiah(totals.poinDiscount)}</span></div>
+          )}
           <div className="mt-1 flex justify-between text-base font-semibold text-[var(--color-brand)]">
             <span>Total</span><span className="figure">{formatRupiah(totals.total)}</span>
           </div>
@@ -717,6 +777,10 @@ export default function KasirPage() {
   const [lastSale, setLastSale] = useState(null)
   const [barcodeInput, setBarcodeInput] = useState('')
   const [showCameraScan, setShowCameraScan] = useState(false)
+  // Daftar promo yang sedang berlaku (dari GET /api/promo/active, field
+  // `activeNow`) — disinkron ulang berkala supaya promo berbasis jam tetap
+  // akurat. Dipakai untuk badge di kartu produk & diskon otomatis keranjang.
+  const [promosActiveNow, setPromosActiveNow] = useState([])
 
   useEffect(() => {
     document.title = 'Kasir — KASIR UMKM'
@@ -725,6 +789,36 @@ export default function KasirPage() {
   useEffect(() => {
     fetchCurrentShift().then(setShift).catch(() => setShift(null))
   }, [])
+
+  const syncActivePromo = useCallback(() => {
+    fetchActivePromo()
+      .then((res) => setPromosActiveNow(res?.activeNow || []))
+      .catch(() => {}) // gagal sync promo tidak boleh menghentikan kasir jualan
+  }, [])
+
+  useEffect(() => {
+    if (!shift) return
+    syncActivePromo()
+    const t = setInterval(syncActivePromo, PROMO_SYNC_INTERVAL_MS)
+    return () => clearInterval(t)
+  }, [shift, syncActivePromo])
+
+  // Rekonsiliasi keranjang tiap kali daftar promo aktif berubah (mis. promo
+  // jam-terbatas baru saja berakhir): item yang promonya sudah tidak berlaku
+  // lagi otomatis dilepas diskon-nya, supaya kasir tidak kena error
+  // PROMO_EXPIRED di backend saat checkout tanpa tahu sebabnya.
+  useEffect(() => {
+    setCart((prev) =>
+      prev.map((item) => {
+        if (!item.promoId) return item
+        const stillValid = promosActiveNow.some(
+          (p) => p.id === item.promoId && isPromoActiveNow(p) && isPromoApplicableToProduct(p, { id: item.productId, categoryId: item.categoryId })
+        )
+        if (stillValid) return item
+        return { ...item, promoId: null, promoName: null, itemDiscount: 0 }
+      })
+    )
+  }, [promosActiveNow])
 
   // Lokasi tempat shift ini beroperasi: subCabangId milik shift (di-set saat
   // buka), fallback lokasi aktif di header — sama urutan resolusi dengan
@@ -752,26 +846,65 @@ export default function KasirPage() {
     fetchCategories().then(setCategories).catch(() => {})
   }, [shift])
 
+  // Hitung ulang field promo (itemDiscount, dsb) untuk qty baru — dipakai saat
+  // item baru ditambah maupun saat qty berubah, supaya promo persen/nominal
+  // selalu akurat terhadap qty terkini (server toh hitung ulang saat checkout,
+  // ini murni supaya angka yang kasir LIHAT sudah benar dari awal).
+  function applyPromoFields(baseItem, product, qty) {
+    const promo = findBestPromoForProduct(promosActiveNow, product)
+    if (!promo) {
+      return { ...baseItem, promoId: null, promoName: null, itemDiscount: 0 }
+    }
+    return {
+      ...baseItem,
+      promoId: promo.id,
+      promoName: promo.name,
+      itemDiscount: computePromoDiscount(promo, Number(product.sellPrice), qty),
+    }
+  }
+
   function addToCart(product) {
     setCart((prev) => {
       const existing = prev.find((i) => i.productId === product.id)
       const stock = product.stockAtLocation ?? 0
       if (existing) {
         if (existing.qty + 1 > stock) return prev // jangan lebihi stok lokasi ini
-        return prev.map((i) => (i.productId === product.id ? { ...i, qty: i.qty + 1 } : i))
+        const newQty = existing.qty + 1
+        return prev.map((i) =>
+          i.productId === product.id
+            ? i.promoId
+              ? applyPromoFields({ ...i, qty: newQty }, product, newQty) // promo aktif: recompute diskon
+              : { ...i, qty: newQty } // diskon manual: qty naik, nominal diskon tidak ikut berubah otomatis
+            : i
+        )
       }
       if (stock < 1) return prev
-      return [
-        ...prev,
-        { productId: product.id, name: product.name, price: Number(product.sellPrice), qty: 1, itemDiscount: 0, unit: product.unit },
-      ]
+      const baseItem = {
+        productId: product.id,
+        categoryId: product.categoryId || null,
+        name: product.name,
+        price: Number(product.sellPrice),
+        qty: 1,
+        itemDiscount: 0,
+        unit: product.unit,
+        promoId: null,
+        promoName: null,
+      }
+      return [...prev, applyPromoFields(baseItem, product, 1)]
     })
   }
 
   function changeQty(productId, delta) {
     setCart((prev) =>
       prev
-        .map((i) => (i.productId === productId ? { ...i, qty: i.qty + delta } : i))
+        .map((i) => {
+          if (i.productId !== productId) return i
+          const newQty = i.qty + delta
+          if (newQty <= 0) return { ...i, qty: newQty }
+          if (!i.promoId) return { ...i, qty: newQty }
+          // Item ini pakai promo — recompute diskon terhadap qty baru.
+          return applyPromoFields({ ...i, qty: newQty }, { id: i.productId, categoryId: i.categoryId, sellPrice: i.price }, newQty)
+        })
         .filter((i) => i.qty > 0)
     )
   }
@@ -812,8 +945,14 @@ export default function KasirPage() {
     setParked((prev) => prev.filter((x) => x.id !== id))
   }
 
+  // Kasir mengetik diskon manual sendiri — ini SELALU menggantikan/melepas
+  // promo otomatis yang mungkin sedang menempel di item ini (supaya tidak
+  // dobel-diskon dan sesuai kontrak backend: item dengan promoId dihitung
+  // ulang dari promo, item tanpa promoId pakai itemDiscount manual apa adanya).
   function editItemDiscount(productId, value) {
-    setCart((prev) => prev.map((i) => (i.productId === productId ? { ...i, itemDiscount: value } : i)))
+    setCart((prev) =>
+      prev.map((i) => (i.productId === productId ? { ...i, itemDiscount: value, promoId: null, promoName: null } : i))
+    )
   }
 
   async function lookupAndAddByCode(code) {
@@ -889,6 +1028,11 @@ export default function KasirPage() {
         <div className="flex justify-between text-sm text-[var(--color-ink-soft)]">
           <span>Subtotal</span><span className="figure">{formatRupiah(totals.subtotal)}</span>
         </div>
+        {totals.promoDiscountTotal > 0 && (
+          <div className="mt-0.5 flex justify-between text-sm text-[var(--color-warning)]">
+            <span>🏷️ Diskon Promo</span><span className="figure">- {formatRupiah(totals.promoDiscountTotal)}</span>
+          </div>
+        )}
         <div className="mt-1 flex justify-between text-base font-semibold text-[var(--color-brand)]">
           <span>Total</span><span className="figure">{formatRupiah(totals.total)}</span>
         </div>
@@ -1018,7 +1162,7 @@ export default function KasirPage() {
           ) : (
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
               {products.map((p) => (
-                <ProductCard key={p.id} product={p} onAdd={addToCart} />
+                <ProductCard key={p.id} product={p} onAdd={addToCart} promo={findBestPromoForProduct(promosActiveNow, p)} />
               ))}
             </div>
           )}

@@ -13,3 +13,16 @@ export async function fetchPriceAnalysis({ days = 30, subCabangId } = {}) {
   const { data } = await apiClient.get('/api/analisa-harga', { params })
   return data
 }
+
+// GET /api/analisa-harga/config
+export async function fetchPriceAnalysisConfig() {
+  const { data } = await apiClient.get('/api/analisa-harga/config')
+  return data
+}
+
+// PATCH /api/analisa-harga/config — Super Admin only.
+// body: { slowMovingMaxTerjual?, returTinggiPersen?, marginTipisPersen?, marginTargetPersen? }
+export async function updatePriceAnalysisConfig(payload) {
+  const { data } = await apiClient.patch('/api/analisa-harga/config', payload)
+  return data
+}
