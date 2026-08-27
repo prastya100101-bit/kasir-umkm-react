@@ -294,7 +294,7 @@ function CartRow({ item, onChangeQty, onRemove, onEditDiscount }) {
           <p className="figure text-xs text-[var(--color-ink-soft)]">{formatRupiah(item.price)} / {item.unit}</p>
         </div>
         <button onClick={() => onRemove(item.productId)} className="text-[var(--color-danger)]" title="Hapus">
-          ✕
+          🗑️
         </button>
       </div>
 
@@ -330,9 +330,9 @@ function CartRow({ item, onChangeQty, onRemove, onEditDiscount }) {
         ) : (
           <button
             onClick={() => setEditingDiscount(true)}
-            className="text-xs text-[var(--color-accent-ink)] underline decoration-dotted"
+            className="flex items-center gap-1 text-xs text-[var(--color-accent-ink)] underline decoration-dotted"
           >
-            {item.itemDiscount > 0 ? `Diskon -${formatRupiah(item.itemDiscount)}` : 'Diskon'}
+            🏷️ {item.itemDiscount > 0 ? `-${formatRupiah(item.itemDiscount)}` : 'Diskon'}
           </button>
         )}
 
@@ -649,6 +649,51 @@ function ReceiptModal({ sale, storeSettings, onClose }) {
   )
 }
 
+// ---------------- Modal daftar transaksi tertahan ----------------
+
+function ParkedListModal({ parked, onResume, onDelete, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-sm rounded-2xl bg-[var(--color-surface)] p-5">
+        <div className="flex items-center justify-between">
+          <h3 className="font-[family-name:var(--font-display)] text-lg font-semibold text-[var(--color-ink)]">
+            Transaksi Tertahan
+          </h3>
+          <button onClick={onClose} className="text-[var(--color-ink-soft)]">✕</button>
+        </div>
+
+        {parked.length === 0 ? (
+          <p className="py-8 text-center text-sm text-[var(--color-ink-soft)]">Tidak ada transaksi tertahan</p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-2">
+            {parked.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 rounded-xl border border-[var(--color-border)] p-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-[var(--color-ink)]">{p.label}</p>
+                  <p className="text-xs text-[var(--color-ink-soft)]">
+                    {p.cart.length} item · {new Date(p.savedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    onClick={() => onResume(p.id)}
+                    className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-medium text-white"
+                  >
+                    Lanjutkan
+                  </button>
+                  <button onClick={() => onDelete(p.id)} className="rounded-lg px-2 text-[var(--color-danger)]" title="Hapus">
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ---------------- Halaman utama ----------------
 
 export default function KasirPage() {
@@ -665,6 +710,8 @@ export default function KasirPage() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
 
   const [cart, setCart] = useState([])
+  const [parked, setParked] = useState([])
+  const [showParkedList, setShowParkedList] = useState(false)
   const [showCartMobile, setShowCartMobile] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [lastSale, setLastSale] = useState(null)
@@ -733,6 +780,38 @@ export default function KasirPage() {
     setCart((prev) => prev.filter((i) => i.productId !== productId))
   }
 
+  // ---- Tahan / lanjutkan transaksi (parked cart) ----
+  // Dipakai kalau kasir perlu layani pelanggan lain dulu tanpa membatalkan
+  // keranjang saat ini — disimpan di memori tab ini saja (bukan di server).
+  function parkCart() {
+    if (cart.length === 0) return
+    const label = window.prompt('Beri nama transaksi ini (contoh: Meja 3 / Bu Sari):', '') || ''
+    setParked((prev) => [
+      ...prev,
+      {
+        id: 'park_' + Date.now(),
+        label: label.trim() || `Transaksi ${prev.length + 1}`,
+        cart,
+        savedAt: new Date().toISOString(),
+      },
+    ])
+    setCart([])
+  }
+
+  function resumeParked(id) {
+    const p = parked.find((x) => x.id === id)
+    if (!p) return
+    if (cart.length > 0 && !window.confirm('Keranjang saat ini akan diganti dengan transaksi tertahan ini. Lanjutkan?')) return
+    setCart(p.cart)
+    setParked((prev) => prev.filter((x) => x.id !== id))
+    setShowParkedList(false)
+  }
+
+  function deleteParked(id) {
+    if (!window.confirm('Hapus transaksi tertahan ini?')) return
+    setParked((prev) => prev.filter((x) => x.id !== id))
+  }
+
   function editItemDiscount(productId, value) {
     setCart((prev) => prev.map((i) => (i.productId === productId ? { ...i, itemDiscount: value } : i)))
   }
@@ -790,7 +869,9 @@ export default function KasirPage() {
   const cartPanel = (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
-        <h3 className="font-[family-name:var(--font-display)] text-base font-semibold">Keranjang</h3>
+        <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-base font-semibold">
+          🛒 Keranjang <span className="text-[var(--color-ink-soft)] font-normal">({cart.length})</span>
+        </h3>
         <button onClick={() => setShowCartMobile(false)} className="text-[var(--color-ink-soft)] sm:hidden">✕</button>
       </div>
 
@@ -811,13 +892,30 @@ export default function KasirPage() {
         <div className="mt-1 flex justify-between text-base font-semibold text-[var(--color-brand)]">
           <span>Total</span><span className="figure">{formatRupiah(totals.total)}</span>
         </div>
-        <button
-          onClick={() => setCheckoutOpen(true)}
-          disabled={cart.length === 0}
-          className="mt-3 w-full rounded-lg bg-[var(--color-brand)] py-3 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          Bayar
-        </button>
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={parkCart}
+            disabled={cart.length === 0}
+            className="flex-1 rounded-lg border border-[var(--color-border)] py-2.5 text-sm font-medium text-[var(--color-ink)] disabled:opacity-50"
+          >
+            📋 Tahan
+          </button>
+          <button
+            onClick={() => setCheckoutOpen(true)}
+            disabled={cart.length === 0}
+            className="flex-[2] rounded-lg bg-[var(--color-brand)] py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            Bayar
+          </button>
+        </div>
+        {parked.length > 0 && (
+          <button
+            onClick={() => setShowParkedList(true)}
+            className="mt-2 w-full rounded-lg py-1.5 text-xs font-medium text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]"
+          >
+            📋 Transaksi Tertahan ({parked.length})
+          </button>
+        )}
       </div>
     </div>
   )
@@ -848,7 +946,7 @@ export default function KasirPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari produk atau SKU…"
-                className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm"
+                className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm"
               />
             </div>
             <form onSubmit={handleScanBarcode} className="flex gap-2 sm:w-64">
@@ -859,14 +957,14 @@ export default function KasirPage() {
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
                   placeholder="Scan barcode…"
-                  className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm"
+                  className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm"
                 />
               </div>
               <button
                 type="button"
                 onClick={() => setShowCameraScan(true)}
                 title="Scan pakai kamera"
-                className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
+                className="shrink-0 rounded-full bg-[var(--color-brand)] px-4 text-sm font-medium text-white hover:opacity-90"
               >
                 📷 <span className="hidden sm:inline">Scan Kamera</span>
               </button>
@@ -973,6 +1071,15 @@ export default function KasirPage() {
           shift={shift}
           onClose={() => setShowCloseShift(false)}
           onClosed={() => { setShowCloseShift(false); setShift(null); setCart([]) }}
+        />
+      )}
+
+      {showParkedList && (
+        <ParkedListModal
+          parked={parked}
+          onResume={resumeParked}
+          onDelete={deleteParked}
+          onClose={() => setShowParkedList(false)}
         />
       )}
     </AppLayout>
