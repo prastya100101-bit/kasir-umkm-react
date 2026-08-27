@@ -1407,7 +1407,14 @@ function KebijakanTab({ accounts }) {
     <div>
       <Card title="Kebijakan Akuntansi">
         <ErrorBanner>{error}</ErrorBanner>
-        <Field label="Mode Pencatatan Payroll" hint="Mode 'accrual' belum diimplementasikan backend (butuh perubahan skema Payroll) — pilihan yang tersedia baru kosong (belum diset) atau 'cash'.">
+        <Field
+          label="Mode Pencatatan Payroll"
+          hint={
+            policy?.payrollMode === 'accrual'
+              ? "Accrual: beban gaji diakui saat payroll disetujui final (jurnal akru: debit Beban Gaji / kredit Utang Gaji), lalu saat dibayar cuma melunasi Utang Gaji-nya (tidak mengakui beban lagi)."
+              : "Cash: beban gaji & kas diakui sekaligus, dipost saat payroll dibayar."
+          }
+        >
           <select
             className={inputClass}
             value={policy?.payrollMode || ''}
@@ -1416,6 +1423,7 @@ function KebijakanTab({ accounts }) {
           >
             <option value="">Belum diset</option>
             <option value="cash">Cash (dicatat saat dibayar)</option>
+            <option value="accrual">Accrual (diakui saat disetujui, dilunasi saat dibayar)</option>
           </select>
         </Field>
       </Card>

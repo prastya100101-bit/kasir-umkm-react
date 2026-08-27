@@ -258,6 +258,11 @@ function PayrollRow({ payroll, canGenerate, canApprove, cashAccounts, onChanged 
         {payroll.approvalStatus === 'ditolak' && payroll.rejectionReason && (
           <p className="mt-0.5 text-xs font-normal text-[var(--color-ink-soft)]">{payroll.rejectionReason}</p>
         )}
+        {payroll.approvalStatus === 'disetujui' && payroll.accrualJournalEntryId && (
+          <p className="mt-0.5 text-xs font-normal text-[var(--color-ink-soft)]">
+            Sudah diakru — bayar nanti hanya melunasi Utang Gaji
+          </p>
+        )}
       </td>
       <td className="px-5 py-3 text-right">
         <div className="flex flex-wrap justify-end gap-2">
