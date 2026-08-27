@@ -8,6 +8,7 @@ import { fetchDashboardData } from '../api/dashboard'
 import { fetchSaleDetail, cancelSale, returSale, fetchReturBySale } from '../api/kasir'
 import { fetchCashAccounts } from '../api/purchasing'
 import { formatRupiah } from '../utils/format'
+import { downloadCsv } from '../utils/exportCsv'
 
 // ============================================================
 // Riwayat Penjualan — daftar transaksi kasir, bisa dicari & difilter,
@@ -20,6 +21,13 @@ import { formatRupiah } from '../utils/format'
 // metode/status/lokasi/pagination dikerjakan di sisi client). Kalau nanti
 // volume transaksi sudah jauh lebih besar, pertimbangkan endpoint
 // GET /api/kasir/sales?from&to&search&page khusus di backend.
+//
+// Rentang tanggal CUSTOM (BARU, 27 Agustus 2026): dulu cuma preset 7/30/90/
+// 180 hari, tidak bisa pilih tanggal bebas. Sekarang ada opsi "Rentang
+// tanggal..." yang memunculkan 2 input tanggal — fetch tetap lewat
+// ?days=N yang sama (dihitung dari selisih hari ke tanggal "dari" + buffer),
+// tapi HASIL AKHIRNYA difilter lagi persis ke [dari 00:00, sampai 23:59:59]
+// di sisi client lewat `filtered` di bawah (lihat customRange).
 // ============================================================
 
 const DAY_OPTIONS = [
@@ -27,6 +35,7 @@ const DAY_OPTIONS = [
   { value: 30, label: '30 hari' },
   { value: 90, label: '90 hari' },
   { value: 180, label: '180 hari' },
+  { value: 'custom', label: 'Rentang tanggal…' },
 ]
 
 const PAY_METHOD_LABEL = {
@@ -48,6 +57,25 @@ const PAGE_SIZE = 20
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function isoDaysAgo(n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString().slice(0, 10)
+}
+
+// Jumlah hari dari tanggal `fromIso` sampai hari ini, dibulatkan ke atas +
+// buffer 1 hari — dipakai sebagai parameter ?days=N ke backend supaya window
+// data yang ditarik pasti mencakup seluruh rentang custom yang dipilih user.
+function daysSince(fromIso) {
+  const from = new Date(`${fromIso}T00:00:00`)
+  const diffMs = Date.now() - from.getTime()
+  return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)) + 1)
 }
 
 function formatWaktu(dateLike) {
@@ -438,6 +466,8 @@ export default function RiwayatPenjualanPage() {
   const { availableLocations, filterSubCabangIds } = useLocationStore()
 
   const [days, setDays] = useState(30)
+  const [customFrom, setCustomFrom] = useState(isoDaysAgo(30))
+  const [customTo, setCustomTo] = useState(todayISO())
   const [sales, setSales] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -448,6 +478,11 @@ export default function RiwayatPenjualanPage() {
   const [page, setPage] = useState(1)
   const [detailSaleId, setDetailSaleId] = useState(null)
 
+  const isCustomRange = days === 'custom'
+  // Window ?days=N yang dikirim ke backend: preset dipakai apa adanya,
+  // custom dihitung dari selisih hari ke tanggal "dari" (lihat daysSince).
+  const fetchDays = isCustomRange ? daysSince(customFrom) : days
+
   useEffect(() => {
     document.title = 'Riwayat Penjualan — KASIR UMKM'
   }, [])
@@ -456,7 +491,7 @@ export default function RiwayatPenjualanPage() {
     let cancelled = false
     setLoading(true)
     setError('')
-    fetchDashboardData({ days })
+    fetchDashboardData({ days: fetchDays })
       .then((data) => {
         if (cancelled) return
         setSales(data.sales || [])
@@ -471,7 +506,7 @@ export default function RiwayatPenjualanPage() {
     return () => {
       cancelled = true
     }
-  }, [days])
+  }, [fetchDays])
 
   useEffect(() => load(), [load])
 
@@ -479,7 +514,7 @@ export default function RiwayatPenjualanPage() {
   // halaman kosong kalau hasil filter baru lebih pendek dari sebelumnya.
   useEffect(() => {
     setPage(1)
-  }, [search, payMethodFilter, statusFilter, filterSubCabangIds, days])
+  }, [search, payMethodFilter, statusFilter, filterSubCabangIds, days, customFrom, customTo])
 
   const locationName = useMemo(() => {
     const map = new Map(availableLocations.map((l) => [l.id, l.name]))
@@ -492,6 +527,14 @@ export default function RiwayatPenjualanPage() {
 
   const filtered = useMemo(() => {
     let rows = sales
+    if (isCustomRange) {
+      const fromMs = new Date(`${customFrom}T00:00:00`).getTime()
+      const toMs = new Date(`${customTo}T23:59:59.999`).getTime()
+      rows = rows.filter((s) => {
+        const t = new Date(s.date).getTime()
+        return t >= fromMs && t <= toMs
+      })
+    }
     if (filterSubCabangIds && filterSubCabangIds.length > 0) {
       rows = rows.filter((s) => filterSubCabangIds.includes(s.subCabangId))
     }
@@ -504,7 +547,7 @@ export default function RiwayatPenjualanPage() {
       )
     }
     return rows
-  }, [sales, filterSubCabangIds, payMethodFilter, statusFilter, search])
+  }, [sales, isCustomRange, customFrom, customTo, filterSubCabangIds, payMethodFilter, statusFilter, search])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -513,13 +556,44 @@ export default function RiwayatPenjualanPage() {
     .filter((s) => s.status === 'completed')
     .reduce((sum, s) => sum + Number(s.total), 0)
 
+  // Export CSV mengikuti SEMUA filter yang aktif saat ini (lokasi, metode,
+  // status, pencarian, rentang tanggal) — bukan cuma halaman yang lagi
+  // ditampilkan, supaya hasil export = apa yang user lihat di ringkasan
+  // "X transaksi · Total Rp...".
+  function handleExportCsv() {
+    downloadCsv(
+      `riwayat-penjualan_${todayISO()}`,
+      filtered,
+      [
+        { key: 'date', label: 'Waktu', value: (s) => formatWaktu(s.date) },
+        { key: 'code', label: 'Kode Transaksi' },
+        { key: 'cashierName', label: 'Kasir' },
+        ...(showLokasiColumn ? [{ key: 'subCabangId', label: 'Lokasi', value: (s) => locationName(s.subCabangId) }] : []),
+        { key: 'payMethod', label: 'Metode Bayar', value: (s) => PAY_METHOD_LABEL[s.payMethod] || s.payMethod },
+        { key: 'subtotal', label: 'Subtotal (Rp)', value: (s) => Number(s.subtotal || 0) },
+        { key: 'discount', label: 'Diskon (Rp)', value: (s) => Number(s.discount || 0) },
+        { key: 'total', label: 'Total (Rp)', value: (s) => Number(s.total || 0) },
+        { key: 'status', label: 'Status', value: (s) => (s.status === 'completed' ? 'Selesai' : s.status === 'batal' ? 'Dibatalkan' : s.status) },
+      ]
+    )
+  }
+
   return (
     <AppLayout title="Riwayat Penjualan" icon={Receipt}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--color-ink-soft)]">
           {filtered.length} transaksi · Total {formatRupiah(totalOmzet)}
         </p>
-        {showLocationFilter && <LocationFilterTree />}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            disabled={filtered.length === 0}
+            className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)] disabled:opacity-40"
+          >
+            ⬇ Export CSV
+          </button>
+          {showLocationFilter && <LocationFilterTree />}
+        </div>
       </div>
 
       <div className="card-elevated mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
@@ -552,13 +626,33 @@ export default function RiwayatPenjualanPage() {
           </select>
           <select
             value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
+            onChange={(e) => setDays(e.target.value === 'custom' ? 'custom' : Number(e.target.value))}
             className="rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-2 text-sm"
           >
             {DAY_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+          {isCustomRange && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-2 text-sm"
+              />
+              <span className="text-xs text-[var(--color-ink-soft)]">s/d</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom}
+                max={todayISO()}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-2 text-sm"
+              />
+            </>
+          )}
         </div>
       </div>
 

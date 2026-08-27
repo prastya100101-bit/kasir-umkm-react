@@ -25,6 +25,7 @@ import {
   postYearEndClosing,
 } from '../api/accounting'
 import { formatRupiah } from '../utils/format'
+import { downloadCsv } from '../utils/exportCsv'
 
 const TABS = [
   { id: 'coa', label: 'Bagan Akun' },
@@ -141,6 +142,23 @@ function AmountCell({ value, positiveGood = true }) {
   const n = num(value)
   const color = n === 0 ? '' : n > 0 === positiveGood ? 'text-[var(--color-brand)]' : 'text-[var(--color-danger)]'
   return <span className={`font-mono tabular-nums ${color}`}>{formatRupiah(n)}</span>
+}
+
+// BARU (27 Agustus 2026, permintaan user "laporan belum bisa di-export"):
+// tombol export CSV generik, dipasang di tiap tab laporan (Buku Besar,
+// Neraca, Laba Rugi, Arus Kas, Neraca Saldo) — bukan cuma render di layar,
+// supaya bisa dibuka di Excel / dikirim ke akuntan.
+function ExportCsvButton({ onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)] disabled:opacity-40"
+    >
+      ⬇ Export CSV
+    </button>
+  )
 }
 
 // ============================================================
@@ -421,6 +439,22 @@ function BukuBesarTab({ accounts }) {
     }
   }
 
+  function handleExportCsv() {
+    if (!data) return
+    downloadCsv(
+      `buku-besar_${data.accountCode}_${from || 'awal'}_${to}`,
+      data.rows,
+      [
+        { key: 'date', label: 'Tanggal', value: (r) => new Date(r.date).toLocaleDateString('id-ID') },
+        { key: 'journalCode', label: 'No. Jurnal' },
+        { key: 'memo', label: 'Keterangan', value: (r) => r.memo || r.description || r.refType },
+        { key: 'debit', label: 'Debit (Rp)', value: (r) => Number(r.debit || 0) },
+        { key: 'credit', label: 'Kredit (Rp)', value: (r) => Number(r.credit || 0) },
+        { key: 'saldoBerjalan', label: 'Saldo Berjalan (Rp)', value: (r) => Number(r.saldoBerjalan || 0) },
+      ]
+    )
+  }
+
   return (
     <Card title="Buku Besar per Akun">
       <ErrorBanner>{error}</ErrorBanner>
@@ -443,13 +477,16 @@ function BukuBesarTab({ accounts }) {
         <Field label="Sampai tanggal">
           <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} />
         </Field>
-        <button
-          type="submit"
-          disabled={!accountCode || loading}
-          className="col-span-4 w-fit rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {loading ? 'Memuat…' : 'Tampilkan'}
-        </button>
+        <div className="col-span-4 flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={!accountCode || loading}
+            className="w-fit rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {loading ? 'Memuat…' : 'Tampilkan'}
+          </button>
+          {data && <ExportCsvButton onClick={handleExportCsv} disabled={!data.rows?.length} />}
+        </div>
       </form>
 
       {loading && <Skeleton />}
@@ -551,12 +588,31 @@ function NeracaTab() {
 
   useEffect(() => { load() }, [load])
 
+  function handleExportCsv() {
+    if (!data) return
+    const rows = [
+      ...flattenAll(data.aset).map((n) => ({ kategori: 'Aset', nama: n.name, saldo: n.saldo })),
+      { kategori: '', nama: 'Total Aset', saldo: data.totalAset },
+      ...flattenAll(data.liabilitas).map((n) => ({ kategori: 'Liabilitas', nama: n.name, saldo: n.saldo })),
+      { kategori: '', nama: 'Total Liabilitas', saldo: data.totalLiabilitas },
+      ...flattenAll(data.ekuitas).map((n) => ({ kategori: 'Ekuitas', nama: n.name, saldo: n.saldo })),
+      { kategori: 'Ekuitas', nama: 'Laba Berjalan (belum ditutup)', saldo: data.labaBerjalan },
+      { kategori: '', nama: 'Total Ekuitas', saldo: data.totalEkuitas },
+    ]
+    downloadCsv(`neraca_${asOfDate}`, rows, [
+      { key: 'kategori', label: 'Kategori' },
+      { key: 'nama', label: 'Nama Akun' },
+      { key: 'saldo', label: 'Saldo (Rp)', value: (r) => Number(r.saldo || 0) },
+    ])
+  }
+
   return (
     <Card
       title="Neraca (Laporan Posisi Keuangan)"
       right={
         <div className="flex items-center gap-2">
           <input type="date" className={inputClass} value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
+          {data && <ExportCsvButton onClick={handleExportCsv} />}
         </div>
       }
     >
@@ -714,6 +770,25 @@ function LabaRugiTab() {
 
   useEffect(() => { load() }, [load])
 
+  function handleExportCsv() {
+    if (!data) return
+    const rows = [
+      ...data.pendapatan.map((r) => ({ kategori: 'Pendapatan', kode: r.code, nama: r.name, saldo: r.saldo })),
+      { kategori: '', kode: '', nama: 'Total Pendapatan', saldo: data.totalPendapatan },
+      { kategori: '', kode: '', nama: 'HPP', saldo: -Math.abs(Number(data.totalHPP || 0)) },
+      { kategori: '', kode: '', nama: 'Laba Kotor', saldo: data.labaKotor },
+      ...data.beban.map((r) => ({ kategori: 'Beban', kode: r.code, nama: r.name, saldo: r.saldo })),
+      { kategori: '', kode: '', nama: 'Total Beban', saldo: data.totalBeban },
+      { kategori: '', kode: '', nama: 'Laba Bersih', saldo: data.labaBersih },
+    ]
+    downloadCsv(`laba-rugi_${from}_${to}`, rows, [
+      { key: 'kategori', label: 'Kategori' },
+      { key: 'kode', label: 'Kode Akun' },
+      { key: 'nama', label: 'Nama' },
+      { key: 'saldo', label: 'Jumlah (Rp)', value: (r) => Number(r.saldo || 0) },
+    ])
+  }
+
   return (
     <Card
       title="Laba Rugi"
@@ -722,6 +797,7 @@ function LabaRugiTab() {
           <input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="text-xs text-[var(--color-ink-soft)]">s/d</span>
           <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} />
+          {data && <ExportCsvButton onClick={handleExportCsv} />}
         </div>
       }
     >
@@ -764,6 +840,25 @@ function ArusKasTab() {
     { key: 'lainnya', label: 'Lainnya', total: 'arusLainnya' },
   ]
 
+  function handleExportCsv() {
+    if (!data) return
+    const rows = []
+    for (const r of rowsDef) {
+      for (const d of data.detail[r.key] || []) {
+        rows.push({ kategori: r.label, tanggal: d.tanggal, deskripsi: d.deskripsi || d.refType, akun: d.accountCode, jumlah: d.jumlah })
+      }
+      rows.push({ kategori: r.label, tanggal: '', deskripsi: 'Subtotal', akun: '', jumlah: data[r.total] })
+    }
+    rows.push({ kategori: '', tanggal: '', deskripsi: 'Total Arus Kas Bersih', akun: '', jumlah: data.totalArusKas })
+    downloadCsv(`arus-kas_${from}_${to}`, rows, [
+      { key: 'kategori', label: 'Kategori' },
+      { key: 'tanggal', label: 'Tanggal', value: (r) => (r.tanggal ? new Date(r.tanggal).toLocaleDateString('id-ID') : '') },
+      { key: 'deskripsi', label: 'Keterangan' },
+      { key: 'akun', label: 'Kode Akun' },
+      { key: 'jumlah', label: 'Jumlah (Rp)', value: (r) => Number(r.jumlah || 0) },
+    ])
+  }
+
   return (
     <Card
       title="Arus Kas"
@@ -772,6 +867,7 @@ function ArusKasTab() {
           <input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="text-xs text-[var(--color-ink-soft)]">s/d</span>
           <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} />
+          {data && <ExportCsvButton onClick={handleExportCsv} />}
         </div>
       }
     >
@@ -840,6 +936,16 @@ function TrialBalanceTab() {
 
   const rows = useMemo(() => (data?.rows || []).filter((r) => num(r.debit) !== 0 || num(r.credit) !== 0), [data])
 
+  function handleExportCsv() {
+    if (!data) return
+    downloadCsv(`neraca-saldo_${from || 'awal'}_${to}`, rows, [
+      { key: 'code', label: 'Kode' },
+      { key: 'name', label: 'Nama Akun' },
+      { key: 'debit', label: 'Debit (Rp)', value: (r) => Number(r.debit || 0) },
+      { key: 'credit', label: 'Kredit (Rp)', value: (r) => Number(r.credit || 0) },
+    ])
+  }
+
   return (
     <Card
       title="Neraca Saldo (Trial Balance)"
@@ -848,6 +954,7 @@ function TrialBalanceTab() {
           <input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Awal (kosong = semua)" />
           <span className="text-xs text-[var(--color-ink-soft)]">s/d</span>
           <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} />
+          {data && <ExportCsvButton onClick={handleExportCsv} disabled={!rows.length} />}
         </div>
       }
     >
