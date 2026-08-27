@@ -14,6 +14,7 @@ import PayrollPage from './pages/PayrollPage'
 import HrisPage from './pages/HrisPage'
 import CashTransferPage from './pages/CashTransferPage'
 import KasirPage from './pages/KasirPage'
+import RiwayatPenjualanPage from './pages/RiwayatPenjualanPage'
 import MejaPage from './pages/MejaPage'
 import MenuDigitalPage from './pages/MenuDigitalPage'
 import PapanPanggilanPage from './pages/PapanPanggilanPage'
@@ -59,6 +60,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV]}>
                 <KasirPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/riwayat-penjualan"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV]}>
+                <RiwayatPenjualanPage />
               </ProtectedRoute>
             }
           />
