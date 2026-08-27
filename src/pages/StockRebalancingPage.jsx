@@ -1,12 +1,31 @@
 import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { useAuth } from '../context/AuthContext'
+import { useLocationStore } from '../store/useLocationStore'
+import LocationFilterTree from '../components/LocationFilterTree'
 import {
   fetchRebalancingSuggestions,
   createTransferFromSuggestion,
   fetchTransferHistory,
 } from '../api/stockRebalancing'
 import apiClient from '../api/client'
+
+// Filter lokasi (multi-select, BARU — lihat LocationFilterTree.jsx): baris
+// saran/riwayat dilewatkan kalau SALAH SATU dari lokasi asal ATAU tujuan ada
+// di himpunan terpilih (bukan harus keduanya) — supaya transfer YANG
+// MELIBATKAN lokasi terpilih tetap kelihatan walau lokasi lawannya (asal/
+// tujuan) tidak ikut dicentang. filterIds null/[] = semua lokasi.
+// 2 versi field access — baris saran pakai id flat (fromSubCabangId/
+// toSubCabangId), baris riwayat pakai objek relasi nested (fromSubCabang.id/
+// toSubCabang.id, lihat TRF_INCLUDE di stockRebalancingController.js).
+function suggestionMatchesFilter(row, filterIds) {
+  if (!filterIds || filterIds.length === 0) return true
+  return filterIds.includes(row.fromSubCabangId) || filterIds.includes(row.toSubCabangId)
+}
+function historyMatchesFilter(trf, filterIds) {
+  if (!filterIds || filterIds.length === 0) return true
+  return filterIds.includes(trf.fromSubCabang?.id) || filterIds.includes(trf.toSubCabang?.id)
+}
 
 const STATUS_TONE = {
   kritis: 'text-[var(--color-danger)]',
@@ -160,6 +179,7 @@ function HistoryRow({ trf, isSuperAdmin, onChanged }) {
 
 export default function StockRebalancingPage() {
   const { isSuperAdmin } = useAuth()
+  const { filterSubCabangIds } = useLocationStore()
 
   const [suggestions, setSuggestions] = useState(null)
   const [history, setHistory] = useState(null)
@@ -196,8 +216,17 @@ export default function StockRebalancingPage() {
     fetchTransferHistory().then(setHistory).catch(() => {})
   }
 
+  const filteredSuggestionRows = suggestions
+    ? suggestions.rows.filter((row) => suggestionMatchesFilter(row, filterSubCabangIds))
+    : []
+  const filteredHistory = history ? history.filter((trf) => historyMatchesFilter(trf, filterSubCabangIds)) : []
+
   return (
     <AppLayout title="Stock Rebalancing">
+      <div className="flex justify-end">
+        <LocationFilterTree />
+      </div>
+
       {error && (
         <div className="rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 p-4 text-sm text-[var(--color-danger)]">
           {error}
@@ -223,14 +252,16 @@ export default function StockRebalancingPage() {
                 Saran Rebalancing
               </h2>
               <p className="text-sm text-[var(--color-ink-soft)]">
-                {suggestions?.summary.totalSaran ?? 0} saran, berdasarkan pemakaian {suggestions?.days ?? 14} hari terakhir
+                {filteredSuggestionRows.length} saran, berdasarkan pemakaian {suggestions?.days ?? 14} hari terakhir
               </p>
             </div>
 
-            {(!suggestions || suggestions.rows.length === 0) ? (
+            {filteredSuggestionRows.length === 0 ? (
               <div className="mt-3 flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
                 <p className="text-sm text-[var(--color-ink-soft)]">
-                  Tidak ada saran rebalancing saat ini — stok tiap lokasi masih dalam batas aman.
+                  {suggestions && suggestions.rows.length > 0
+                    ? 'Tidak ada saran yang melibatkan lokasi terpilih.'
+                    : 'Tidak ada saran rebalancing saat ini — stok tiap lokasi masih dalam batas aman.'}
                 </p>
               </div>
             ) : (
@@ -247,7 +278,7 @@ export default function StockRebalancingPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {suggestions.rows.map((row, i) => (
+                    {filteredSuggestionRows.map((row, i) => (
                       <SuggestionRow
                         key={`${row.itemType}-${row.itemId}-${row.fromSubCabangId}-${row.toSubCabangId}-${i}`}
                         row={row}
@@ -265,9 +296,13 @@ export default function StockRebalancingPage() {
               Riwayat Transfer
             </h2>
 
-            {(!history || history.length === 0) ? (
+            {filteredHistory.length === 0 ? (
               <div className="mt-3 flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
-                <p className="text-sm text-[var(--color-ink-soft)]">Belum ada permintaan transfer.</p>
+                <p className="text-sm text-[var(--color-ink-soft)]">
+                  {history && history.length > 0
+                    ? 'Tidak ada riwayat transfer yang melibatkan lokasi terpilih.'
+                    : 'Belum ada permintaan transfer.'}
+                </p>
               </div>
             ) : (
               <div className="card-elevated mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
@@ -283,7 +318,7 @@ export default function StockRebalancingPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {history.map((trf) => (
+                    {filteredHistory.map((trf) => (
                       <HistoryRow key={trf.id} trf={trf} isSuperAdmin={isSuperAdmin} onChanged={loadAll} />
                     ))}
                   </tbody>

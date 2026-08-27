@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { useAuth } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
+import LocationFilterTree from '../components/LocationFilterTree'
 import { fetchReconciliationSummary } from '../api/dashboard'
 import { updateReconciliationThresholds } from '../api/reconciliation'
 import { formatRupiah } from '../utils/format'
@@ -9,10 +10,12 @@ import { formatRupiah } from '../utils/format'
 // Sama pola dengan filterByLocation() di DashboardPage.jsx — backend belum
 // narrow-by-location untuk endpoint ini (lihat catatan §3 poin 12 roadmap),
 // jadi Manager/SPV Cabang yang punya beberapa SubCabang tetap bisa mempersempit
-// tampilan lewat dropdown lokasi di header, murni penyaringan sisi client.
-function filterByLocation(rows, activeLocation, field = 'subCabangId') {
-  if (!activeLocation) return rows
-  return rows.filter((r) => r[field] === activeLocation.id)
+// tampilan lewat panel Filter Lokasi (multi-select, BARU — lihat
+// LocationFilterTree.jsx), murni penyaringan sisi client. filterIds null atau
+// [] = "semua lokasi", tidak ada penyaringan tambahan.
+function filterByLocation(rows, filterIds, field = 'subCabangId') {
+  if (!filterIds || filterIds.length === 0) return rows
+  return rows.filter((r) => filterIds.includes(r[field]))
 }
 
 function formatWaktu(dateLike) {
@@ -151,7 +154,7 @@ function ThresholdsModal({ thresholds, onClose, onSaved }) {
 
 export default function ReconciliationDashboardPage() {
   const { isSuperAdmin } = useAuth()
-  const { activeLocation } = useLocationStore()
+  const { availableLocations, filterSubCabangIds } = useLocationStore()
 
   const [data, setData] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -177,35 +180,43 @@ export default function ReconciliationDashboardPage() {
     load()
   }, [load])
 
-  const kasBelumDisetor = data ? filterByLocation(data.kasBelumDisetor, activeLocation, 'subCabangId') : []
+  const kasBelumDisetor = data ? filterByLocation(data.kasBelumDisetor, filterSubCabangIds, 'subCabangId') : []
   const transferMenunggu = data
-    ? filterByLocation(data.transferMenunggu, activeLocation, 'fromSubCabangId')
+    ? filterByLocation(data.transferMenunggu, filterSubCabangIds, 'fromSubCabangId')
     : []
   const transferSelisihEskalasi = data
-    ? filterByLocation(data.transferSelisihEskalasi, activeLocation, 'fromSubCabangId')
+    ? filterByLocation(data.transferSelisihEskalasi, filterSubCabangIds, 'fromSubCabangId')
     : []
 
   const kasBelumDisetorTotal = kasBelumDisetor.reduce((sum, r) => sum + Number(r.saldoKas), 0)
   const selisihEskalasiTotal = transferSelisihEskalasi.reduce((sum, r) => sum + Math.abs(Number(r.selisih)), 0)
 
+  const filterLabel =
+    !filterSubCabangIds || filterSubCabangIds.length === 0
+      ? 'semua lokasi'
+      : filterSubCabangIds.length === 1
+        ? availableLocations.find((l) => l.id === filterSubCabangIds[0])?.name ?? '1 lokasi'
+        : `${filterSubCabangIds.length} lokasi terpilih`
+
   return (
     <AppLayout title="Dashboard Rekonsiliasi">
-      <div className="flex items-baseline justify-between">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
         <p className="text-sm text-[var(--color-ink-soft)]">
           Menampilkan data untuk{' '}
-          <span className="font-medium text-[var(--color-ink)]">
-            {activeLocation?.name ?? 'semua lokasi'}
-          </span>
+          <span className="font-medium text-[var(--color-ink)]">{filterLabel}</span>
           .
         </p>
-        {isSuperAdmin && data && (
-          <button
-            onClick={() => setShowSettings(true)}
-            className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
-          >
-            Atur Ambang Batas
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <LocationFilterTree />
+          {isSuperAdmin && data && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
+            >
+              Atur Ambang Batas
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (

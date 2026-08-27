@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { useLocationStore } from '../store/useLocationStore'
+import LocationFilterTree from '../components/LocationFilterTree'
 import { fetchPriceAnalysis } from '../api/priceAnalysis'
 import { formatRupiah } from '../utils/format'
 
@@ -27,7 +28,7 @@ function marginTone(marginPercent) {
 }
 
 export default function MarginLokasiPage() {
-  const { activeLocation } = useLocationStore()
+  const { availableLocations, filterSubCabangIds } = useLocationStore()
   const [days, setDays] = useState(30)
   const [report, setReport] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -42,7 +43,12 @@ export default function MarginLokasiPage() {
     setIsLoading(true)
     setError(null)
 
-    fetchPriceAnalysis({ days, subCabangId: activeLocation?.id })
+    // subCabangId TIDAK dikirim di sini — marginRealizedByLocation SENGAJA
+    // global dari backend (lihat catatan di atas), penyaringan lokasi
+    // sepenuhnya di sisi client lewat filterSubCabangIds (mendukung
+    // multi-select, beda dari parameter subCabangId tunggal yang dipakai
+    // getReport untuk slowMovingRows/returRows yang tidak dipakai halaman ini).
+    fetchPriceAnalysis({ days })
       .then((data) => {
         if (cancelled) return
         setReport(data)
@@ -58,42 +64,47 @@ export default function MarginLokasiPage() {
     return () => {
       cancelled = true
     }
-  }, [days, activeLocation?.id])
+  }, [days])
 
   // marginRealizedByLocation sudah pecah per baris produk+lokasi dari
-  // backend — filter tambahan di sini murni jaga-jaga kalau "Semua lokasi"
-  // dipilih tapi user sempat pindah lokasi sebelum data lama selesai load.
+  // backend — filter lokasi (multi-select, BARU) murni penyaringan sisi
+  // client. filterSubCabangIds null/[] = semua lokasi, dilewatkan apa adanya.
   const rows = report?.marginRealizedByLocation ?? []
-  const filteredRows = activeLocation
-    ? rows.filter((r) => r.subCabangId === activeLocation.id)
-    : rows
+  const hasFilter = filterSubCabangIds && filterSubCabangIds.length > 0
+  const filteredRows = hasFilter ? rows.filter((r) => filterSubCabangIds.includes(r.subCabangId)) : rows
+  const filterLabel = !hasFilter
+    ? 'semua lokasi'
+    : filterSubCabangIds.length === 1
+      ? availableLocations.find((l) => l.id === filterSubCabangIds[0])?.name ?? '1 lokasi'
+      : `${filterSubCabangIds.length} lokasi terpilih`
 
   return (
     <AppLayout title="Margin Lokasi">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--color-ink-soft)]">
           Margin yang benar-benar terjadi dari transaksi tercatat untuk{' '}
-          <span className="font-medium text-[var(--color-ink)]">
-            {activeLocation?.name ?? 'semua lokasi'}
-          </span>
+          <span className="font-medium text-[var(--color-ink)]">{filterLabel}</span>
           . Bukan harga yang bisa diedit — angka ini murni hasil transaksi sungguhan.
         </p>
 
-        <div className="flex gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1">
-          {DAY_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setDays(opt.value)}
-              className={[
-                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                days === opt.value
-                  ? 'bg-[var(--color-brand)] text-white'
-                  : 'text-[var(--color-ink-soft)] hover:bg-black/5',
-              ].join(' ')}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <LocationFilterTree />
+          <div className="flex gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1">
+            {DAY_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setDays(opt.value)}
+                className={[
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  days === opt.value
+                    ? 'bg-[var(--color-brand)] text-white'
+                    : 'text-[var(--color-ink-soft)] hover:bg-black/5',
+                ].join(' ')}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -131,7 +142,7 @@ export default function MarginLokasiPage() {
             <thead>
               <tr className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
                 <th className="px-5 py-3 font-medium">Produk</th>
-                {!activeLocation && <th className="px-5 py-3 font-medium">Lokasi</th>}
+                {filterSubCabangIds?.length !== 1 && <th className="px-5 py-3 font-medium">Lokasi</th>}
                 <th className="px-5 py-3 text-right font-medium">Qty Terjual</th>
                 <th className="px-5 py-3 text-right font-medium">Harga Jual Realisasi</th>
                 <th className="px-5 py-3 text-right font-medium">HPP Realisasi</th>
@@ -145,7 +156,7 @@ export default function MarginLokasiPage() {
                   className="border-b border-[var(--color-border)] last:border-0"
                 >
                   <td className="px-5 py-3 font-medium text-[var(--color-ink)]">{row.name}</td>
-                  {!activeLocation && (
+                  {filterSubCabangIds?.length !== 1 && (
                     <td className="px-5 py-3 text-[var(--color-ink-soft)]">{row.subCabangName}</td>
                   )}
                   <td className="px-5 py-3 text-right figure">{row.qtyTerjual}</td>
