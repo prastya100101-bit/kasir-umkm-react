@@ -1694,12 +1694,17 @@ function PrediksiStokTab({ subCabangOptions, defaultSubCabangId, isSuperAdmin })
               <button
                 key={s}
                 onClick={() => setStatusFilter(statusFilter === s ? 'all' : s)}
-                className={`rounded-xl border p-4 text-left card-elevated ${
+                className={`flex items-center gap-3 rounded-xl border p-4 text-left card-elevated ${
                   statusFilter === s ? 'border-[var(--color-brand)]' : 'border-[var(--color-border)]'
                 } bg-[var(--color-surface)]`}
               >
-                <p className="text-xs text-[var(--color-ink-soft)]">{STATUS_LABELS[s]}</p>
-                <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{report.summary[s] ?? 0}</p>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">
+                  {{ kritis: '🚨', perlu_restock: '📦', cek_manual: '🔍', aman: '✅' }[s]}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs text-[var(--color-ink-soft)]">{STATUS_LABELS[s]}</p>
+                  <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{report.summary[s] ?? 0}</p>
+                </div>
               </button>
             ))}
           </div>

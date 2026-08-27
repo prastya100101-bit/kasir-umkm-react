@@ -126,21 +126,30 @@ function ForecastTab() {
       ) : !data ? null : (
         <>
           <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
-              <p className="text-xs text-[var(--color-ink-soft)]">Saldo Kas Saat Ini</p>
-              <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{formatRupiah(data.saldoSaatIni)}</p>
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">💰</span>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--color-ink-soft)]">Saldo Kas Saat Ini</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{formatRupiah(data.saldoSaatIni)}</p>
+              </div>
             </div>
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
-              <p className="text-xs text-[var(--color-ink-soft)]">Piutang Lewat Jatuh Tempo</p>
-              <p className="mt-1 text-xl font-semibold text-[var(--color-danger)]">
-                {formatRupiah(data.overdueTotals.piutang)}
-              </p>
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-lg">⏰</span>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--color-ink-soft)]">Piutang Lewat Jatuh Tempo</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--color-danger)]">
+                  {formatRupiah(data.overdueTotals.piutang)}
+                </p>
+              </div>
             </div>
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
-              <p className="text-xs text-[var(--color-ink-soft)]">Utang Lewat Jatuh Tempo</p>
-              <p className="mt-1 text-xl font-semibold text-[var(--color-danger)]">
-                {formatRupiah(data.overdueTotals.utang)}
-              </p>
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-lg">📮</span>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--color-ink-soft)]">Utang Lewat Jatuh Tempo</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--color-danger)]">
+                  {formatRupiah(data.overdueTotals.utang)}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -263,15 +272,23 @@ function DuesTab({ kind }) {
       ) : !data ? null : (
         <>
           <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
-              <p className="text-xs text-[var(--color-ink-soft)]">
-                Total {isPiutang ? 'Piutang Belum Lunas' : 'Utang Belum Lunas'}
-              </p>
-              <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{formatRupiah(data.total)}</p>
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">
+                {isPiutang ? '📥' : '📤'}
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--color-ink-soft)]">
+                  Total {isPiutang ? 'Piutang Belum Lunas' : 'Utang Belum Lunas'}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{formatRupiah(data.total)}</p>
+              </div>
             </div>
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
-              <p className="text-xs text-[var(--color-ink-soft)]">Jumlah Baris</p>
-              <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{data.rows.length}</p>
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">📋</span>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--color-ink-soft)]">Jumlah Baris</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{data.rows.length}</p>
+              </div>
             </div>
           </div>
 

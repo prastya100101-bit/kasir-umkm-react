@@ -161,13 +161,19 @@ export default function ExpensePage() {
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
-          <p className="text-xs text-[var(--color-ink-soft)]">Jumlah Baris (sesuai filter)</p>
-          <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{filtered.length}</p>
+        <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">📋</span>
+          <div className="min-w-0">
+            <p className="text-xs text-[var(--color-ink-soft)]">Jumlah Baris (sesuai filter)</p>
+            <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{filtered.length}</p>
+          </div>
         </div>
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
-          <p className="text-xs text-[var(--color-ink-soft)]">Total Biaya (sesuai filter)</p>
-          <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{formatRupiah(totalFiltered)}</p>
+        <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">💸</span>
+          <div className="min-w-0">
+            <p className="text-xs text-[var(--color-ink-soft)]">Total Biaya (sesuai filter)</p>
+            <p className="mt-1 text-xl font-semibold text-[var(--color-ink)]">{formatRupiah(totalFiltered)}</p>
+          </div>
         </div>
       </div>
 

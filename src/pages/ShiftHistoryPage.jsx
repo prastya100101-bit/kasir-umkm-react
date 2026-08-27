@@ -137,21 +137,31 @@ export default function ShiftHistoryPage() {
       </div>
 
       <div className="mb-5 grid grid-cols-3 gap-3">
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <p className="text-xs text-[var(--color-ink-soft)]">Total Shift</p>
-          <p className="mt-1 text-xl font-semibold">{summary.totalShift}</p>
+        <div className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">🕒</span>
+          <div className="min-w-0">
+            <p className="text-xs text-[var(--color-ink-soft)]">Total Shift</p>
+            <p className="mt-1 text-xl font-semibold">{summary.totalShift}</p>
+          </div>
         </div>
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <p className="text-xs text-[var(--color-ink-soft)]">Shift dengan Selisih</p>
-          <p className="mt-1 text-xl font-semibold">{summary.shiftSelisih}</p>
+        <div className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-lg">⚖️</span>
+          <div className="min-w-0">
+            <p className="text-xs text-[var(--color-ink-soft)]">Shift dengan Selisih</p>
+            <p className="mt-1 text-xl font-semibold">{summary.shiftSelisih}</p>
+          </div>
         </div>
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <p className="text-xs text-[var(--color-ink-soft)]">Total Selisih Kas</p>
-          <p className={`mt-1 text-xl font-semibold tabular-nums ${summary.totalSelisih === 0 ? '' : summary.totalSelisih > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-            {summary.totalSelisih > 0 ? '+' : ''}{formatRupiah(summary.totalSelisih)}
-          </p>
+        <div className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-tint)] text-lg">💵</span>
+          <div className="min-w-0">
+            <p className="text-xs text-[var(--color-ink-soft)]">Total Selisih Kas</p>
+            <p className={`mt-1 text-xl font-semibold tabular-nums ${summary.totalSelisih === 0 ? '' : summary.totalSelisih > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+              {summary.totalSelisih > 0 ? '+' : ''}{formatRupiah(summary.totalSelisih)}
+            </p>
+          </div>
         </div>
       </div>
+
 
       {error && <div className="mb-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
