@@ -614,6 +614,16 @@ function NeracaTab() {
                   </tr>
                 </tfoot>
               </table>
+              <table className="mt-4 w-full text-sm">
+                <tbody>
+                  <tr className="border-t-2 border-[var(--color-border)] font-semibold">
+                    <td className="py-2">Total Liabilitas + Ekuitas</td>
+                    <td className="py-2 text-right">
+                      <AmountCell value={Number(data.totalLiabilitas) + Number(data.totalEkuitas)} />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
