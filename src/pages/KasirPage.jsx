@@ -211,20 +211,64 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
 
 // ---------------- Kartu produk ----------------
 
+// Placeholder ikon kotak — dipakai saat produk belum punya foto (`product.image`
+// kosong). Bentuknya kubus garis tipis, senada dengan tone netral kartu supaya
+// tidak "kosong terasa error" sebelum foto produk diisi lewat Manajemen Produk.
+function ProductImagePlaceholder() {
+  return (
+    <svg viewBox="0 0 40 40" className="h-9 w-9 text-[var(--color-border)]" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M20 4 L34 11.5 V28.5 L20 36 L6 28.5 V11.5 Z" strokeLinejoin="round" />
+      <path d="M20 4 V20 M20 20 L34 11.5 M20 20 L6 11.5" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function ProductCard({ product, onAdd }) {
   const stock = product.stockAtLocation ?? 0
   const outOfStock = stock <= 0
+  const isPaket = /paket|combo/i.test(product.category?.name || '')
+
   return (
     <button
       onClick={() => onAdd(product)}
       disabled={outOfStock}
-      className="card-elevated flex flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-left transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+      className={`card-elevated group flex flex-col overflow-hidden rounded-xl border bg-[var(--color-surface)] text-left transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${
+        isPaket ? 'border-[var(--color-accent)]' : 'border-[var(--color-border)]'
+      }`}
     >
-      <span className="line-clamp-2 text-sm font-medium text-[var(--color-ink)]">{product.name}</span>
-      <span className="figure mt-1 text-sm font-semibold text-[var(--color-brand)]">{formatRupiah(product.sellPrice)}</span>
-      <span className={`mt-1 text-xs ${outOfStock ? 'text-[var(--color-danger)]' : 'text-[var(--color-ink-soft)]'}`}>
-        {outOfStock ? 'Stok habis' : `Stok ${stock} ${product.unit}`}
-      </span>
+      {/* Area foto — rasio persegi, konsisten walau foto belum ada */}
+      <div className="relative aspect-square w-full bg-[var(--color-canvas)]">
+        {product.image ? (
+          <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <ProductImagePlaceholder />
+          </div>
+        )}
+        {isPaket && (
+          <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--color-danger)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            Paket
+          </span>
+        )}
+        {outOfStock && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+            <span className="rounded-md bg-[var(--color-danger)] px-2 py-0.5 text-[11px] font-semibold text-white">
+              Stok habis
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Info produk */}
+      <div className="flex flex-1 flex-col gap-0.5 p-2.5">
+        <span className="line-clamp-2 text-sm font-medium leading-snug text-[var(--color-ink)]">{product.name}</span>
+        <span className="figure text-sm font-semibold text-[var(--color-brand)]">{formatRupiah(product.sellPrice)}</span>
+        {!outOfStock && (
+          <span className="text-xs text-[var(--color-ink-soft)]">
+            Stok: {stock} {product.unit}
+          </span>
+        )}
+      </div>
     </button>
   )
 }
@@ -797,54 +841,76 @@ export default function KasirPage() {
         {/* Grid produk */}
         <div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari produk / SKU…"
-              className="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
-            />
-            <form onSubmit={handleScanBarcode} className="flex gap-2 sm:w-56">
+            <div className="relative flex-1">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-soft)]">🔍</span>
               <input
                 type="text"
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
-                placeholder="Scan barcode + Enter"
-                className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari produk atau SKU…"
+                className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm"
               />
+            </div>
+            <form onSubmit={handleScanBarcode} className="flex gap-2 sm:w-64">
+              <div className="relative flex-1">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-soft)]">▤</span>
+                <input
+                  type="text"
+                  value={barcodeInput}
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  placeholder="Scan barcode…"
+                  className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm"
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => setShowCameraScan(true)}
                 title="Scan pakai kamera"
-                className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+                className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
               >
-                📷
+                📷 <span className="hidden sm:inline">Scan Kamera</span>
               </button>
             </form>
           </div>
 
-          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
             <button
               onClick={() => setCategoryId('')}
-              className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${categoryId === '' ? 'border-[var(--color-brand)] bg-[var(--color-brand)] text-white' : 'border-[var(--color-border)]'}`}
+              className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
+                categoryId === ''
+                  ? 'border-[var(--color-brand)] bg-[var(--color-brand)] text-white'
+                  : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)]'
+              }`}
             >
               Semua
             </button>
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setCategoryId(c.id)}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${categoryId === c.id ? 'border-[var(--color-brand)] bg-[var(--color-brand)] text-white' : 'border-[var(--color-border)]'}`}
-              >
-                {c.name}
-              </button>
-            ))}
+            {categories.map((c) => {
+              const isPaketCategory = /paket|combo/i.test(c.name)
+              const isSelected = categoryId === c.id
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setCategoryId(c.id)}
+                  className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
+                    isSelected
+                      ? isPaketCategory
+                        ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-ink)]'
+                        : 'border-[var(--color-brand)] bg-[var(--color-brand)] text-white'
+                      : isPaketCategory
+                        ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent-ink)]'
+                        : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)]'
+                  }`}
+                >
+                  {isPaketCategory ? '📦 ' : ''}{c.name}
+                </button>
+              )
+            })}
           </div>
 
           {isLoadingProducts && products.length === 0 ? (
-            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-24 animate-pulse rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="aspect-[3/4] animate-pulse rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
               ))}
             </div>
           ) : products.length === 0 ? (
@@ -852,7 +918,7 @@ export default function KasirPage() {
               Tidak ada produk ditemukan.
             </div>
           ) : (
-            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
               {products.map((p) => (
                 <ProductCard key={p.id} product={p} onAdd={addToCart} />
               ))}
