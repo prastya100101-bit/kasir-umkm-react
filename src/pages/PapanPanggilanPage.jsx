@@ -58,10 +58,16 @@ export default function PapanPanggilanPage() {
           const key = `${o.id}:${o.calledAt}`
           if (!announcedRef.current.has(key)) {
             announcedRef.current.add(key)
-            const namaOrNomor = o.customerName ? o.customerName : `nomor ${o.queueNumber}`
+            // Bagian tengah SELALU otomatis (tidak ikut dikustom admin) —
+            // hanya prefix & suffix yang bisa diatur lewat Pengaturan >
+            // Template Panggilan. Ini yang memastikan nama/nomor pelanggan
+            // selalu disebutkan jelas, tidak cuma "woi andri".
+            const tengah = o.customerName
+              ? `Pesanan atas nama ${o.customerName}, silakan diambil di kasir.`
+              : `Pesanan nomor ${o.queueNumber}, silakan diambil di kasir.`
             const { prefix, suffix } = templateRef.current || {}
-            const teks = [prefix, `${namaOrNomor}.`, suffix].filter(Boolean).join(' ')
-            speak(teks || `Pesanan ${namaOrNomor}, silakan ke kasir.`)
+            const teks = [prefix, tengah, suffix].filter(Boolean).join(' ')
+            speak(teks)
           }
         }
         setOrders(data)
@@ -80,7 +86,8 @@ export default function PapanPanggilanPage() {
   // "membuka" izin suara sekali saat menyalakan device ini.
   function enableSound() {
     const { prefix, suffix } = settings.announcementTemplate || {}
-    speak([prefix, suffix].filter(Boolean).join(' ') || 'Papan panggilan siap.')
+    const contoh = 'Pesanan atas nama Andri, silakan diambil di kasir.'
+    speak([prefix, contoh, suffix].filter(Boolean).join(' '))
   }
 
   return (
