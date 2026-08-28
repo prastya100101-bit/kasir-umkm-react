@@ -6,6 +6,7 @@ import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
 import { fetchDashboardData, fetchReconciliationSummary, fetchDashboardLayout, saveDashboardLayout } from '../api/dashboard'
 import { formatRupiah } from '../utils/format'
+import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 // BARU (27 Agustus 2026, Perbaikan #7 audit-fleksibilitas-sistem): dulu
 // jendela tren SELALU 14 hari terakhir (TREND_DAYS) dan produk
@@ -406,13 +407,23 @@ function KpiCard({ card }) {
   )
 }
 
-// Bar chart ringan tanpa dependency tambahan (project ini belum pakai library
-// chart) — sama pola dengan CashFlowChart di FinanceForecastPage.jsx. Batang
-// hari ini disorot warna aksen (brass) supaya langsung ketemu sekilas,
-// batang lain pakai teal lembut.
+// Diupgrade ke Recharts (28 Agustus 2026, Sesi Chart) — sebelumnya bar chart
+// hand-rolled div/CSS (sama pola dengan CashFlowChart di
+// FinanceForecastPage.jsx, juga diupgrade bareng). Recharts dipilih karena
+// paling umum & ringan buat React, dan mendukung tooltip presisi,
+// responsive resize, tanpa perlu bikin ulang logic hover manual. Warna tetap
+// pakai CSS var (--color-*) supaya otomatis ikut dark mode — SVG fill/stroke
+// menerima string var() langsung di browser modern.
 function SalesTrendChart({ trend, periodLabel }) {
-  const maxOmzet = Math.max(1, ...trend.map((d) => d.omzet))
   const todayKey = dayKey(new Date())
+  const chartData = trend.map((d) => ({
+    key: d.key,
+    label: shortWeekday(d.date),
+    fullDate: d.date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+    omzet: d.omzet,
+    count: d.count,
+    isToday: d.key === todayKey,
+  }))
 
   return (
     <div className="card-elevated rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
@@ -422,28 +433,39 @@ function SalesTrendChart({ trend, periodLabel }) {
           <p className="text-xs text-[var(--color-ink-soft)]">Hanya transaksi berstatus selesai</p>
         </div>
       </div>
-      <div className="flex h-44 items-end gap-1.5 sm:gap-2">
-        {trend.map((d) => {
-          const heightPct = d.omzet ? Math.max(4, Math.round((d.omzet / maxOmzet) * 100)) : 2
-          const isTodayBar = d.key === todayKey
-          return (
-            <div
-              key={d.key}
-              className="flex flex-1 flex-col items-center justify-end gap-1.5"
-              title={`${d.date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} — ${formatRupiah(d.omzet)} (${d.count} transaksi)`}
-            >
-              <div
-                className={`w-full rounded-t transition-all ${isTodayBar ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-brand)]/80'}`}
-                style={{ height: `${heightPct}%` }}
-              />
-              <span
-                className={`text-[10px] ${isTodayBar ? 'font-semibold text-[var(--color-accent-ink)]' : 'text-[var(--color-ink-soft)]'}`}
-              >
-                {shortWeekday(d.date)}
-              </span>
-            </div>
-          )
-        })}
+      <div className="h-44">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 3" />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: 'var(--color-ink-soft)', fontSize: 10 }}
+              axisLine={{ stroke: 'var(--color-border)' }}
+              tickLine={false}
+            />
+            <YAxis hide />
+            <Tooltip
+              cursor={{ fill: 'var(--color-brand-tint)' }}
+              contentStyle={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+              labelStyle={{ color: 'var(--color-ink)' }}
+              formatter={(value, name, props) => [
+                `${formatRupiah(value)} (${props.payload.count} transaksi)`,
+                props.payload.fullDate,
+              ]}
+              labelFormatter={() => ''}
+            />
+            <Bar dataKey="omzet" radius={[3, 3, 0, 0]}>
+              {chartData.map((d) => (
+                <Cell key={d.key} fill={d.isToday ? 'var(--color-accent)' : 'var(--color-brand)'} fillOpacity={d.isToday ? 1 : 0.8} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   )

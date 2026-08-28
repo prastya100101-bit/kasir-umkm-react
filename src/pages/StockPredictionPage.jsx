@@ -14,6 +14,16 @@ import {
   deleteCategoryOverride,
 } from '../api/stockPrediction'
 import { fetchCategories } from '../api/masterData'
+import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
+
+// Warna batang chart urgensi mengikuti tone status yang sama dengan badge
+// tabel (STATUS_TONE), supaya konsisten secara visual di halaman ini.
+const STATUS_BAR_COLOR = {
+  danger: 'var(--color-danger)',
+  warning: 'var(--color-warning)',
+  neutral: 'var(--color-ink-soft)',
+  success: 'var(--color-success)',
+}
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -66,6 +76,65 @@ function SummaryCard({ icon, label, value, tone, active, onClick }) {
         </p>
       </div>
     </button>
+  )
+}
+
+// 10 item paling mendesak (daysUntilStockout terkecil, null/tak terhitung
+// dikeluarkan) — bar horizontal supaya nama item panjang tetap terbaca.
+function UrgentItemsChart({ items }) {
+  if (items.length === 0) return null
+  return (
+    <div className="card-elevated rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      <div className="mb-4">
+        <p className="text-sm font-medium text-[var(--color-ink)]">10 Item Paling Mendesak</p>
+        <p className="text-xs text-[var(--color-ink-soft)]">Diurutkan berdasarkan sisa hari sebelum stok habis</p>
+      </div>
+      <div style={{ height: Math.max(220, items.length * 32) }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={items}
+            layout="vertical"
+            margin={{ top: 4, right: 24, left: 4, bottom: 0 }}
+          >
+            <CartesianGrid horizontal={false} stroke="var(--color-border)" strokeDasharray="3 3" />
+            <XAxis
+              type="number"
+              tick={{ fill: 'var(--color-ink-soft)', fontSize: 10 }}
+              axisLine={{ stroke: 'var(--color-border)' }}
+              tickLine={false}
+              allowDecimals={false}
+            />
+            <YAxis
+              type="category"
+              dataKey="name"
+              width={140}
+              tick={{ fill: 'var(--color-ink)', fontSize: 11 }}
+              axisLine={{ stroke: 'var(--color-border)' }}
+              tickLine={false}
+            />
+            <Tooltip
+              cursor={{ fill: 'var(--color-brand-tint)' }}
+              contentStyle={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+              labelStyle={{ color: 'var(--color-ink)' }}
+              formatter={(value, name, props) => [
+                `± ${value} hari (${STATUS_LABELS[props.payload.status] || props.payload.status})`,
+                'Sisa stok',
+              ]}
+            />
+            <Bar dataKey="daysUntilStockout" radius={[0, 3, 3, 0]}>
+              {items.map((d) => (
+                <Cell key={`${d.itemType}-${d.itemId}`} fill={STATUS_BAR_COLOR[STATUS_TONE[d.status]] || 'var(--color-brand)'} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   )
 }
 
@@ -378,6 +447,26 @@ export default function StockPredictionPage() {
     })
   }, [report, statusFilter, typeFilter, search])
 
+  // 10 item paling mendesak, dari seluruh laporan (bukan hasil filter tabel)
+  // supaya chart selalu jadi ringkasan menyeluruh, terlepas dari filter yang
+  // sedang aktif di tabel bawahnya. Item tanpa perkiraan (null) dikeluarkan.
+  const urgentChartData = useMemo(() => {
+    if (!report) return []
+    return report.rows
+      .filter((r) => r.daysUntilStockout !== null && r.daysUntilStockout !== undefined)
+      .slice()
+      .sort((a, b) => a.daysUntilStockout - b.daysUntilStockout)
+      .slice(0, 10)
+      .map((r) => ({
+        itemId: r.itemId,
+        itemType: r.itemType,
+        name: r.name.length > 22 ? `${r.name.slice(0, 21)}…` : r.name,
+        daysUntilStockout: r.daysUntilStockout,
+        status: r.status,
+      }))
+      .reverse() // reverse supaya paling mendesak tampil di atas pada bar horizontal
+  }, [report])
+
   return (
     <AppLayout title="Prediksi Stok (AI)" icon={BarChart3}>
       <div className="space-y-4">
@@ -485,6 +574,8 @@ export default function StockPredictionPage() {
             />
           </div>
         )}
+
+        <UrgentItemsChart items={urgentChartData} />
 
         <div className="flex flex-wrap gap-2">
           {TYPE_FILTERS.map((t) => (

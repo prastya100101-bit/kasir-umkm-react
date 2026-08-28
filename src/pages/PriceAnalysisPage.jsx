@@ -9,6 +9,7 @@ import {
   fetchPriceAnalysisConfig,
   updatePriceAnalysisConfig,
 } from '../api/priceAnalysis'
+import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -48,6 +49,115 @@ function SummaryCard({ icon, label, value, tone, active, onClick }) {
         </p>
       </div>
     </button>
+  )
+}
+
+// Warna batang mengikuti ambang margin tipis: di bawah ambang = merah
+// (danger), di atasnya = kuning (warning) — supaya sekilas terlihat mana
+// yang paling butuh perhatian tanpa baca angka dulu.
+function marginBarColor(marginPercent, thresholdPercent) {
+  if (thresholdPercent != null && marginPercent < thresholdPercent) return 'var(--color-danger)'
+  return 'var(--color-warning)'
+}
+
+// 10 produk dengan margin paling tipis, bar horizontal (nama produk sering
+// panjang) — dipakai di tab "Semua Margin Produk".
+function MarginBarChart({ items, thresholdPercent }) {
+  if (items.length === 0) return null
+  return (
+    <div className="card-elevated m-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      <div className="mb-4">
+        <p className="text-sm font-medium text-[var(--color-ink)]">10 Produk Margin Paling Tipis</p>
+        <p className="text-xs text-[var(--color-ink-soft)]">
+          Dari produk yang cocok filter/pencarian saat ini
+        </p>
+      </div>
+      <div style={{ height: Math.max(220, items.length * 32) }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={items} layout="vertical" margin={{ top: 4, right: 24, left: 4, bottom: 0 }}>
+            <CartesianGrid horizontal={false} stroke="var(--color-border)" strokeDasharray="3 3" />
+            <XAxis
+              type="number"
+              unit="%"
+              tick={{ fill: 'var(--color-ink-soft)', fontSize: 10 }}
+              axisLine={{ stroke: 'var(--color-border)' }}
+              tickLine={false}
+            />
+            <YAxis
+              type="category"
+              dataKey="name"
+              width={140}
+              tick={{ fill: 'var(--color-ink)', fontSize: 11 }}
+              axisLine={{ stroke: 'var(--color-border)' }}
+              tickLine={false}
+            />
+            <Tooltip
+              cursor={{ fill: 'var(--color-brand-tint)' }}
+              contentStyle={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+              labelStyle={{ color: 'var(--color-ink)' }}
+              formatter={(value, name, props) => [
+                `${value}% (HPP ${formatRupiah(props.payload.costPrice)} → ${formatRupiah(props.payload.sellPrice)})`,
+                'Margin',
+              ]}
+            />
+            <Bar dataKey="marginPercent" radius={[0, 3, 3, 0]}>
+              {items.map((d) => (
+                <Cell key={d.itemId} fill={marginBarColor(d.marginPercent, thresholdPercent)} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+// Margin realisasi rata-rata (tertimbang qty terjual) per SubCabang, dari
+// data granular per-produk×lokasi yang sudah ada — dipakai di tab "Margin
+// Realisasi per Lokasi" untuk perbandingan cepat antar lokasi.
+function LocationMarginChart({ items }) {
+  if (items.length === 0) return null
+  return (
+    <div className="card-elevated m-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      <div className="mb-4">
+        <p className="text-sm font-medium text-[var(--color-ink)]">Margin Realisasi Rata-Rata per Lokasi</p>
+        <p className="text-xs text-[var(--color-ink-soft)]">Tertimbang qty terjual, dari produk yang cocok filter/pencarian saat ini</p>
+      </div>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={items} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 3" />
+            <XAxis
+              dataKey="subCabangName"
+              tick={{ fill: 'var(--color-ink-soft)', fontSize: 10 }}
+              axisLine={{ stroke: 'var(--color-border)' }}
+              tickLine={false}
+            />
+            <YAxis hide />
+            <Tooltip
+              cursor={{ fill: 'var(--color-brand-tint)' }}
+              contentStyle={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+              labelStyle={{ color: 'var(--color-ink)' }}
+              formatter={(value, name, props) => [
+                `${value}% (${props.payload.qtyTerjual} qty terjual)`,
+                'Margin realisasi',
+              ]}
+            />
+            <Bar dataKey="marginPercent" fill="var(--color-brand)" radius={[3, 3, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   )
 }
 
@@ -192,6 +302,45 @@ export default function PriceAnalysisPage() {
     () => (report ? byName(report.marginRealizedByLocation) : []),
     [report, byName]
   )
+
+  // 10 margin paling tipis (ascending), nama dipotong supaya label sumbu-Y
+  // chart tidak terlalu lebar.
+  const marginChartData = useMemo(
+    () =>
+      marginRows
+        .slice()
+        .sort((a, b) => a.marginPercent - b.marginPercent)
+        .slice(0, 10)
+        .map((r) => ({
+          ...r,
+          name: r.name.length > 22 ? `${r.name.slice(0, 21)}…` : r.name,
+        }))
+        .reverse(), // reverse supaya margin paling tipis tampil di atas pada bar horizontal
+    [marginRows]
+  )
+
+  // Agregasi per SubCabang: margin rata-rata tertimbang qty terjual, dari
+  // data granular per-produk×lokasi (locationRows). Lokasi tanpa nama
+  // (data lama/longgar) dikelompokkan sebagai "Lainnya".
+  const locationChartData = useMemo(() => {
+    const bySub = new Map()
+    for (const r of locationRows) {
+      const key = r.subCabangId ?? 'none'
+      const label = r.subCabangName || 'Lainnya'
+      const qty = r.qtyTerjual || 0
+      const entry = bySub.get(key) || { subCabangName: label, qtyTerjual: 0, weightedMarginSum: 0 }
+      entry.qtyTerjual += qty
+      entry.weightedMarginSum += (r.marginPercent || 0) * qty
+      bySub.set(key, entry)
+    }
+    return Array.from(bySub.values())
+      .map((e) => ({
+        subCabangName: e.subCabangName,
+        qtyTerjual: e.qtyTerjual,
+        marginPercent: e.qtyTerjual > 0 ? Math.round((e.weightedMarginSum / e.qtyTerjual) * 10) / 10 : 0,
+      }))
+      .sort((a, b) => b.qtyTerjual - a.qtyTerjual)
+  }, [locationRows])
 
   return (
     <AppLayout title="Rekomendasi Harga & Analisa Produk" icon={Sparkles}>
@@ -343,33 +492,36 @@ export default function PriceAnalysisPage() {
           )}
 
           {tab === 'margin' && (
-            <table className="w-full text-sm">
-              <thead className="bg-[var(--color-canvas)] text-left text-xs text-[var(--color-ink-soft)]">
-                <tr>
-                  <th className="px-3 py-2">Produk</th>
-                  <th className="px-3 py-2">HPP</th>
-                  <th className="px-3 py-2">Harga Jual</th>
-                  <th className="px-3 py-2">Margin</th>
-                </tr>
-              </thead>
-              <tbody>
-                {marginRows.length === 0 && (
+            <>
+              <MarginBarChart items={marginChartData} thresholdPercent={config?.marginTipisPersen} />
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--color-canvas)] text-left text-xs text-[var(--color-ink-soft)]">
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-[var(--color-ink-soft)]">
-                      {loading ? 'Memuat...' : 'Tidak ada data'}
-                    </td>
+                    <th className="px-3 py-2">Produk</th>
+                    <th className="px-3 py-2">HPP</th>
+                    <th className="px-3 py-2">Harga Jual</th>
+                    <th className="px-3 py-2">Margin</th>
                   </tr>
-                )}
-                {marginRows.map((r) => (
-                  <tr key={r.itemId} className="border-t border-[var(--color-border)]">
-                    <td className="px-3 py-2 font-medium">{r.name}</td>
-                    <td className="figure px-3 py-2 whitespace-nowrap">{formatRupiah(r.costPrice)}</td>
-                    <td className="figure px-3 py-2 whitespace-nowrap">{formatRupiah(r.sellPrice)}</td>
-                    <td className="px-3 py-2">{r.marginPercent}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {marginRows.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-[var(--color-ink-soft)]">
+                        {loading ? 'Memuat...' : 'Tidak ada data'}
+                      </td>
+                    </tr>
+                  )}
+                  {marginRows.map((r) => (
+                    <tr key={r.itemId} className="border-t border-[var(--color-border)]">
+                      <td className="px-3 py-2 font-medium">{r.name}</td>
+                      <td className="figure px-3 py-2 whitespace-nowrap">{formatRupiah(r.costPrice)}</td>
+                      <td className="figure px-3 py-2 whitespace-nowrap">{formatRupiah(r.sellPrice)}</td>
+                      <td className="px-3 py-2">{r.marginPercent}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
 
           {tab === 'slow' && (
@@ -435,33 +587,36 @@ export default function PriceAnalysisPage() {
           )}
 
           {tab === 'location' && (
-            <table className="w-full text-sm">
-              <thead className="bg-[var(--color-canvas)] text-left text-xs text-[var(--color-ink-soft)]">
-                <tr>
-                  <th className="px-3 py-2">Produk</th>
-                  <th className="px-3 py-2">Lokasi</th>
-                  <th className="px-3 py-2">Qty Terjual</th>
-                  <th className="px-3 py-2">Margin Realisasi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {locationRows.length === 0 && (
+            <>
+              <LocationMarginChart items={locationChartData} />
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--color-canvas)] text-left text-xs text-[var(--color-ink-soft)]">
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-[var(--color-ink-soft)]">
-                      {loading ? 'Memuat...' : 'Belum ada transaksi pada rentang & filter ini'}
-                    </td>
+                    <th className="px-3 py-2">Produk</th>
+                    <th className="px-3 py-2">Lokasi</th>
+                    <th className="px-3 py-2">Qty Terjual</th>
+                    <th className="px-3 py-2">Margin Realisasi</th>
                   </tr>
-                )}
-                {locationRows.map((r, idx) => (
-                  <tr key={`${r.itemId}-${r.subCabangId ?? 'none'}-${idx}`} className="border-t border-[var(--color-border)]">
-                    <td className="px-3 py-2 font-medium">{r.name}</td>
-                    <td className="px-3 py-2 text-[var(--color-ink-soft)]">{r.subCabangName || '—'}</td>
-                    <td className="figure px-3 py-2 whitespace-nowrap">{r.qtyTerjual}</td>
-                    <td className="px-3 py-2">{r.marginPercent}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {locationRows.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-[var(--color-ink-soft)]">
+                        {loading ? 'Memuat...' : 'Belum ada transaksi pada rentang & filter ini'}
+                      </td>
+                    </tr>
+                  )}
+                  {locationRows.map((r, idx) => (
+                    <tr key={`${r.itemId}-${r.subCabangId ?? 'none'}-${idx}`} className="border-t border-[var(--color-border)]">
+                      <td className="px-3 py-2 font-medium">{r.name}</td>
+                      <td className="px-3 py-2 text-[var(--color-ink-soft)]">{r.subCabangName || '—'}</td>
+                      <td className="figure px-3 py-2 whitespace-nowrap">{r.qtyTerjual}</td>
+                      <td className="px-3 py-2">{r.marginPercent}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
       </div>

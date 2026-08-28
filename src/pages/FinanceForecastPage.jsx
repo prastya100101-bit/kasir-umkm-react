@@ -10,6 +10,7 @@ import {
   BUCKET_LABELS,
   BUCKET_TONE,
 } from '../api/financeInsights'
+import { ResponsiveContainer, BarChart as RBarChart, Bar, Cell, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -208,28 +209,49 @@ function ForecastTab() {
 // library chart) — batang naik/turun terhadap 0, tinggi proporsional
 // ke nilai absolut terbesar di timeline supaya tetap terbaca walau ada
 // saldo negatif.
+// Diupgrade ke Recharts (28 Agustus 2026, Sesi Chart) — sebelumnya bar chart
+// hand-rolled div/CSS, sama pola dengan SalesTrendChart di DashboardPage.jsx
+// (diupgrade bareng). Saldo negatif tetap disorot merah (danger).
 function CashFlowChart({ timeline }) {
   if (!timeline || timeline.length === 0) return null
-  const maxAbs = Math.max(1, ...timeline.map((w) => Math.abs(Number(w.saldoProyeksi))))
+  const chartData = timeline.map((w) => ({
+    week: w.week,
+    label: `M${w.week}`,
+    saldo: Number(w.saldoProyeksi),
+  }))
 
   return (
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 card-elevated">
       <p className="mb-3 text-xs font-medium text-[var(--color-ink-soft)]">Tren Saldo Proyeksi per Minggu</p>
-      <div className="flex h-40 items-end gap-1.5">
-        {timeline.map((w) => {
-          const val = Number(w.saldoProyeksi)
-          const heightPct = Math.max(4, Math.round((Math.abs(val) / maxAbs) * 100))
-          const negative = val < 0
-          return (
-            <div key={w.week} className="flex flex-1 flex-col items-center justify-end gap-1" title={formatRupiah(val)}>
-              <div
-                className={`w-full rounded-t ${negative ? 'bg-[var(--color-danger)]' : 'bg-[var(--color-brand)]'}`}
-                style={{ height: `${heightPct}%` }}
-              />
-              <span className="text-[10px] text-[var(--color-ink-soft)]">M{w.week}</span>
-            </div>
-          )
-        })}
+      <div className="h-40">
+        <ResponsiveContainer width="100%" height="100%">
+          <RBarChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 3" />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: 'var(--color-ink-soft)', fontSize: 10 }}
+              axisLine={{ stroke: 'var(--color-border)' }}
+              tickLine={false}
+            />
+            <YAxis hide />
+            <Tooltip
+              cursor={{ fill: 'var(--color-brand-tint)' }}
+              contentStyle={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+              labelStyle={{ color: 'var(--color-ink)' }}
+              formatter={(value) => [formatRupiah(value), 'Saldo Proyeksi']}
+            />
+            <Bar dataKey="saldo" radius={[3, 3, 0, 0]}>
+              {chartData.map((d) => (
+                <Cell key={d.week} fill={d.saldo < 0 ? 'var(--color-danger)' : 'var(--color-brand)'} />
+              ))}
+            </Bar>
+          </RBarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   )
