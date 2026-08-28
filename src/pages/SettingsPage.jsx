@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { Settings } from 'lucide-react'
 import { fetchSettings, saveSettings, fetchAnnouncementTemplateOverrides, deleteAnnouncementTemplateOverride } from '../api/settings'
 import { fetchAllLocations } from '../api/locations'
-import { fetchBackupSummary, downloadBackup } from '../api/backup'
 import { fetchApprovalConfigs, setApprovalConfig } from '../api/approvalConfig'
+import { fetchBackupSummary, downloadBackup } from '../api/backup'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useTranslation } from '../i18n/I18nContext'
+import { formatDateTime } from '../utils/format'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -49,6 +50,28 @@ const DEFAULT_ASSET_CATEGORY_ID_BY_LABEL = {
   elektronik: 'elektronik',
   perabotan: 'perabotan',
   lainnya: 'lainnya',
+}
+
+// Sesi B (Approval Threshold UI, 28 Agustus 2026) — key ApprovalConfig
+// nyata yang dibaca backend (dicek langsung dari kode, BUKAN dari nama key
+// yang sempat ditulis di roadmap/dokumen lama — dua di antaranya ternyata
+// tidak cocok):
+//   - po_approval_threshold          → purchasingController.js (Rp, PO)
+//   - produksi_approval_threshold    → productionController.js (Rp, Order Produksi)
+//   - stock_adjustment_qty_threshold → services/stockService.js (qty, Penyesuaian Stok)
+//   - stock_transfer_qty_threshold   → services/stockService.js (qty, Transfer Stok)
+// Catatan: purchasingController.js juga punya konstanta
+// 'stock_adjust_approval_threshold' & 'stock_transfer_approval_threshold'
+// di objek APPROVAL_CONFIG_KEYS-nya, TAPI keduanya tidak pernah dipakai di
+// mana pun (dead code) — stockService.js yang benar-benar mengeksekusi
+// approval Penyesuaian/Transfer Stok pakai nama key qty_threshold di atas.
+// SENGAJA tidak dibuatkan UI untuk 2 key mati itu supaya tidak menyimpan
+// nilai yang kelihatan tersimpan tapi tidak pernah dibaca backend manapun.
+const APPROVAL_THRESHOLD_KEYS = {
+  po: 'po_approval_threshold',
+  produksi: 'produksi_approval_threshold',
+  stockAdjustQty: 'stock_adjustment_qty_threshold',
+  stockTransferQty: 'stock_transfer_qty_threshold',
 }
 
 function slugifyCategoryLabel(label) {
@@ -154,187 +177,127 @@ function AppearanceCard() {
   )
 }
 
-// Sesi B (Roadmap Penyelesaian, 28 Agustus 2026) — sebelumnya kelima key
-// threshold ini cuma bisa diubah langsung di database. Verifikasi ulang ke
-// kode terbaru (bukan cuma percaya roadmap lama) menemukan 2 key yang
-// tercatat di roadmap ternyata TIDAK dipakai di mana pun
-// (stock_adjust_approval_threshold & stock_transfer_approval_threshold,
-// cuma dideklarasikan di purchasingController.js tapi tidak pernah
-// dipanggil) — key yang benar-benar dibaca services/stockService.js untuk
-// approval Penyesuaian & Transfer Stok adalah *_qty_threshold. Daftar di
-// bawah sudah dikoreksi supaya form ini benar-benar mengontrol alur
-// approval yang berjalan, bukan key mati.
-//
-// PENTING — dua semantik berbeda tercampur di sini:
-// - po_approval_threshold & produksi_approval_threshold: 0/kosong berarti
-//   TIDAK PERNAH butuh approval; di atas angka ini BUTUH approval.
-// - stock_adjustment_qty_threshold & stock_transfer_qty_threshold: bekerja
-//   TERBALIK — 0/kosong berarti SELALU butuh approval; qty di bawah/sama
-//   nilai ini OTOMATIS disetujui (lihat stockService.js getThreshold()).
-const APPROVAL_THRESHOLD_FIELDS = [
-  {
-    key: 'po_approval_threshold',
-    label: 'Ambang Approval PO',
-    unit: 'Rp',
-    hint: 'PO dengan total di atas nominal ini butuh persetujuan sebelum bisa diterima. Isi 0 atau kosongkan = PO tidak pernah butuh approval.',
-  },
-  {
-    key: 'produksi_approval_threshold',
-    label: 'Ambang Approval Produksi',
-    unit: 'Rp',
-    hint: 'Order produksi dengan estimasi biaya bahan baku di atas nominal ini butuh persetujuan. Isi 0 atau kosongkan = tidak pernah butuh approval.',
-  },
-  {
-    key: 'stock_adjustment_qty_threshold',
-    label: 'Ambang Auto-Approve Penyesuaian Stok',
-    unit: 'qty',
-    hint: 'Kebalikan dari dua di atas: penyesuaian stok dengan qty di bawah atau sama dengan nilai ini otomatis disetujui. Di atas nilai ini — atau kalau field ini kosong/0 — selalu butuh persetujuan manual.',
-  },
-  {
-    key: 'stock_transfer_qty_threshold',
-    label: 'Ambang Auto-Approve Transfer Stok',
-    unit: 'qty',
-    hint: 'Sama seperti Penyesuaian Stok di atas (qty di bawah/sama = otomatis disetujui), tapi berlaku untuk transfer stok antar lokasi.',
-  },
-]
+// Audit #21 (27-28 Agustus 2026) — kartu "Backup Data". Super Admin only
+// (dijamin ulang di server oleh backupRoutes.js, bukan cuma disembunyikan
+// di UI). SENGAJA bukan <SectionCard>: tidak ada field yang "disimpan",
+// cuma dua aksi (lihat ringkasan lalu unduh) — pola sama seperti
+// AppearanceCard di atas. Ringkasan TIDAK dimuat otomatis saat halaman
+// dibuka: generateFullBackup() query SEMUA tabel bisnis (biaya sama
+// besarnya dengan export sungguhan, cuma tidak mengirim isi barisnya),
+// jadi baru dijalankan saat admin eksplisit klik tombol.
+function BackupCard() {
+  const [summary, setSummary] = useState(null)
+  const [loadingSummary, setLoadingSummary] = useState(false)
+  const [summaryError, setSummaryError] = useState(null)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState(null)
+  const [downloadSuccess, setDownloadSuccess] = useState(null)
 
-// Kartu terpisah (bukan <SectionCard>) karena butuh load & validasi/konfirmasi
-// sendiri sebelum simpan — beda dari field bisnis biasa di bawahnya yang
-// langsung PUT /api/settings tanpa konfirmasi tambahan. Nilai disimpan satu-
-// satu ke ApprovalConfig lewat approvalConfig.js (pola yang sama dipakai tab
-// Threshold Budgeting), bukan lewat saveSettings.
-function ApprovalThresholdCard() {
-  const [values, setValues] = useState({})
-  const [initial, setInitial] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
-
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    fetchApprovalConfigs()
-      .then((configs) => {
-        const map = {}
-        for (const f of APPROVAL_THRESHOLD_FIELDS) {
-          const found = configs.find((c) => c.key === f.key)
-          map[f.key] = found ? found.value : ''
-        }
-        setValues(map)
-        setInitial(map)
-      })
-      .catch((err) => setError(errMsg(err, 'Gagal memuat ambang batas approval.')))
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setError(null)
-    setSuccess(null)
-
-    for (const f of APPROVAL_THRESHOLD_FIELDS) {
-      const v = values[f.key]
-      if (v !== '' && v !== undefined && (Number.isNaN(Number(v)) || Number(v) < 0)) {
-        setError(`${f.label}: harus berupa angka >= 0.`)
-        return
-      }
+  async function handleLoadSummary() {
+    setLoadingSummary(true)
+    setSummaryError(null)
+    try {
+      const data = await fetchBackupSummary()
+      setSummary(data)
+    } catch (err) {
+      setSummaryError(errMsg(err, 'Gagal memuat ringkasan backup.'))
+    } finally {
+      setLoadingSummary(false)
     }
+  }
 
-    const changed = APPROVAL_THRESHOLD_FIELDS.filter(
-      (f) => (values[f.key] || '0') !== (initial[f.key] || '0')
-    )
-    if (changed.length === 0) {
-      setSuccess('Tidak ada perubahan untuk disimpan.')
-      return
-    }
-
-    const summary = changed
-      .map((f) => `• ${f.label}: ${initial[f.key] || '0'} → ${values[f.key] || '0'} ${f.unit}`)
-      .join('\n')
+  async function handleDownload() {
     const confirmed = window.confirm(
-      `Perubahan ini langsung memengaruhi alur approval yang sedang berjalan (PO/Produksi/Stok):\n\n${summary}\n\nLanjutkan simpan?`
+      'Unduh backup penuh seluruh data bisnis sebagai file JSON? File ini berisi data lintas semua lokasi (tidak termasuk sesi login & hash password) — simpan di tempat yang aman, jangan dibagikan sembarangan.'
     )
     if (!confirmed) return
 
-    setSaving(true)
+    setDownloading(true)
+    setDownloadError(null)
+    setDownloadSuccess(null)
     try {
-      for (const f of changed) {
-        await setApprovalConfig(f.key, values[f.key] || '0')
-      }
-      setSuccess('Ambang batas approval berhasil disimpan.')
-      await load()
+      await downloadBackup()
+      setDownloadSuccess('Backup berhasil diunduh.')
     } catch (err) {
-      setError(errMsg(err, 'Gagal menyimpan ambang batas approval.'))
+      setDownloadError(errMsg(err, 'Gagal mengunduh backup.'))
     } finally {
-      setSaving(false)
+      setDownloading(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="mb-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 card-elevated">
-        <p className="text-sm text-[var(--color-ink-soft)]">Memuat ambang batas approval...</p>
-      </div>
-    )
-  }
+  const totalRows = summary ? Object.values(summary.counts || {}).reduce((a, b) => a + b, 0) : null
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="mb-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 card-elevated"
-    >
+    <div className="mb-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 card-elevated">
       <h2 className="mb-1 font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-ink)]">
-        Ambang Batas Approval
+        Backup Data
       </h2>
       <p className="mb-4 text-xs text-[var(--color-ink-soft)]">
-        Menentukan kapan Purchase Order, Order Produksi, Penyesuaian Stok, dan Transfer Stok butuh
-        persetujuan — sebelumnya cuma bisa diubah langsung di database.
+        Unduh snapshot JSON seluruh data bisnis (semua lokasi) untuk disimpan sendiri di luar sistem. Sesi login, riwayat percobaan login, dan hash password TIDAK ikut diekspor. Fitur ini khusus Super Admin.
       </p>
-      {error && (
-        <div className="mb-3 rounded-md bg-[var(--color-danger-tint)] px-3 py-2 text-sm text-[var(--color-danger)]">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-3 rounded-md bg-[var(--color-success-tint,#dcfce7)] px-3 py-2 text-sm text-[var(--color-success,#16a34a)]">
-          {success}
-        </div>
-      )}
-      <div className="space-y-4">
-        {APPROVAL_THRESHOLD_FIELDS.map((f) => (
-          <label key={f.key} className="block text-sm">
-            <span className="mb-1 block font-medium text-[var(--color-ink)]">
-              {f.label} <span className="text-[var(--color-ink-soft)]">({f.unit})</span>
-            </span>
-            <input
-              type="number"
-              min="0"
-              className={inputClass}
-              value={values[f.key] ?? ''}
-              onChange={(e) => setValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              placeholder="0"
-            />
-            <span className="mt-1 block text-xs text-[var(--color-ink-soft)]">{f.hint}</span>
-          </label>
-        ))}
+
+      <ErrorBanner message={summaryError} />
+      <ErrorBanner message={downloadError} />
+      <SuccessBanner message={downloadSuccess} />
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={handleLoadSummary}
+          disabled={loadingSummary}
+          className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)] disabled:opacity-50"
+        >
+          {loadingSummary ? 'Memuat ringkasan...' : 'Lihat Ringkasan'}
+        </button>
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={downloading}
+          className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {downloading ? 'Mengunduh...' : 'Unduh Backup (JSON)'}
+        </button>
       </div>
-      <button
-        type="submit"
-        disabled={saving}
-        className="mt-4 rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {saving ? 'Menyimpan...' : 'Simpan Ambang Batas'}
-      </button>
-    </form>
+
+      {summary && (
+        <div className="rounded-lg border border-[var(--color-border)]">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--color-border)] px-4 py-2.5">
+            <span className="text-sm font-medium text-[var(--color-ink)]">
+              {totalRows.toLocaleString('id-ID')} total baris di {Object.keys(summary.counts || {}).length} tabel
+            </span>
+            <span className="text-xs text-[var(--color-ink-soft)]">
+              Dihitung: {formatDateTime(summary.generatedAt)}
+            </span>
+          </div>
+
+          {summary.errors?.length > 0 && (
+            <div className="border-b border-[var(--color-border)] bg-[var(--color-danger-tint)] px-4 py-2.5 text-xs text-[var(--color-danger)]">
+              {summary.errors.length} tabel gagal dihitung: {summary.errors.map((e) => e.model).join(', ')}
+            </div>
+          )}
+
+          <div className="max-h-64 overflow-y-auto px-4 py-2">
+            <table className="w-full text-sm">
+              <tbody>
+                {Object.entries(summary.counts || {}).map(([model, count]) => (
+                  <tr key={model} className="border-b border-[var(--color-border)] last:border-0">
+                    <td className="py-1.5 pr-2 text-[var(--color-ink)]">{summary.tableLabels?.[model] || model}</td>
+                    <td className="py-1.5 text-right tabular-nums text-[var(--color-ink-soft)]">
+                      {count.toLocaleString('id-ID')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
 export default function SettingsPage() {
+  const { isSuperAdmin } = useAuth()
   const [settings, setSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -373,6 +336,17 @@ export default function SettingsPage() {
   const [panggilanOverride, setPanggilanOverride] = useState({ prefix: '', suffix: '' })
   const [panggilanOverrides, setPanggilanOverrides] = useState({}) // { [subCabangId]: {prefix, suffix} }
   const [savingOverride, setSavingOverride] = useState(false)
+
+  // Sesi B — Ambang Batas Approval. Disimpan di tabel ApprovalConfig
+  // (bukan Settings), jadi dimuat & disimpan lewat api/approvalConfig.js,
+  // terpisah dari fetchSettings/saveSettings di atas.
+  const [ambangApproval, setAmbangApproval] = useState({
+    po: '',
+    produksi: '',
+    stockAdjustQty: '',
+    stockTransferQty: '',
+  })
+  const [savingAmbang, setSavingAmbang] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -427,6 +401,32 @@ export default function SettingsPage() {
     }
   }, [])
 
+  // Sesi B — muat nilai ambang batas approval yang sudah tersimpan. Tanpa
+  // prefix (tabel ApprovalConfig generik, dipakai juga oleh Budgeting
+  // dengan key budget_threshold_*) — filter ke 4 key kita sendiri di sisi
+  // klien. Kegagalan di sini TIDAK menghalangi form pengaturan lain di
+  // halaman ini (pola sama seperti fetchAllLocations/Overrides di atas);
+  // field cukup tampil kosong dan bisa dicoba lagi lewat submit.
+  useEffect(() => {
+    let mounted = true
+    fetchApprovalConfigs()
+      .then((configs) => {
+        if (!mounted) return
+        const byKey = {}
+        ;(configs || []).forEach((c) => { byKey[c.key] = c.value })
+        setAmbangApproval({
+          po: byKey[APPROVAL_THRESHOLD_KEYS.po] ?? '',
+          produksi: byKey[APPROVAL_THRESHOLD_KEYS.produksi] ?? '',
+          stockAdjustQty: byKey[APPROVAL_THRESHOLD_KEYS.stockAdjustQty] ?? '',
+          stockTransferQty: byKey[APPROVAL_THRESHOLD_KEYS.stockTransferQty] ?? '',
+        })
+      })
+      .catch(() => {})
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   useEffect(() => {
     const existing = panggilanOverrideTarget ? panggilanOverrides[panggilanOverrideTarget] : null
     setPanggilanOverride({ prefix: existing?.prefix || '', suffix: existing?.suffix || '' })
@@ -467,6 +467,53 @@ export default function SettingsPage() {
       setError(errMsg(err, 'Gagal menghapus override.'))
     } finally {
       setSavingOverride(false)
+    }
+  }
+
+  // Sesi B — simpan ambang batas approval. Beda dari handleSave (di bawah,
+  // untuk tabel Settings): di sini tiap field adalah baris ApprovalConfig
+  // TERPISAH (key berbeda), jadi disimpan lewat setApprovalConfig satu-
+  // satu (paralel), bukan satu payload gabungan. Field kosong dianggap 0
+  // (matikan approval/auto-approve untuk item itu) — konsisten dengan
+  // pesan hint di tiap field & default backend (threshold 0/tidak ada
+  // baris = tidak pernah butuh approval untuk PO/Produksi, atau selalu
+  // butuh approval manual untuk Penyesuaian/Transfer Stok).
+  async function handleSaveAmbangApproval(e) {
+    e.preventDefault()
+
+    for (const [field, label] of [
+      ['po', 'Ambang Approval PO'],
+      ['produksi', 'Ambang Approval Produksi'],
+      ['stockAdjustQty', 'Ambang Auto-Approve Penyesuaian Stok'],
+      ['stockTransferQty', 'Ambang Auto-Approve Transfer Stok'],
+    ]) {
+      const raw = ambangApproval[field]
+      if (raw !== '' && (Number.isNaN(Number(raw)) || Number(raw) < 0)) {
+        setError(`"${label}" harus berupa angka >= 0 (kosongkan untuk 0).`)
+        return
+      }
+    }
+
+    const confirmed = window.confirm(
+      'Ubah ambang batas approval sekarang? Perubahan berlaku langsung untuk PO, Order Produksi, Penyesuaian Stok, dan Transfer Stok BERIKUTNYA (yang sudah diajukan sebelumnya tidak berubah).'
+    )
+    if (!confirmed) return
+
+    setSavingAmbang(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await Promise.all(
+        Object.entries(APPROVAL_THRESHOLD_KEYS).map(([field, key]) => {
+          const value = ambangApproval[field] === '' ? '0' : String(Number(ambangApproval[field]))
+          return setApprovalConfig(key, value)
+        })
+      )
+      setSuccess('Ambang batas approval berhasil disimpan.')
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan ambang batas approval.'))
+    } finally {
+      setSavingAmbang(false)
     }
   }
 
@@ -599,7 +646,67 @@ export default function SettingsPage() {
         </Field>
       </SectionCard>
 
-      <ApprovalThresholdCard />
+      {isSuperAdmin && <BackupCard />}
+
+      <SectionCard
+        title="Ambang Batas Approval"
+        note="Menentukan kapan Purchase Order, Order Produksi, Penyesuaian Stok, dan Transfer Stok butuh persetujuan — sebelumnya cuma bisa diubah langsung di database."
+        saving={savingAmbang}
+        onSubmit={handleSaveAmbangApproval}
+      >
+        <Field
+          label="Ambang Approval PO (Rp)"
+          hint="PO dengan total di atas nominal ini butuh persetujuan sebelum bisa diterima. Isi 0 atau kosongkan = PO tidak pernah butuh approval."
+        >
+          <input
+            type="number"
+            min="0"
+            className={inputClass}
+            value={ambangApproval.po}
+            onChange={(e) => setAmbangApproval({ ...ambangApproval, po: e.target.value })}
+            placeholder="0"
+          />
+        </Field>
+        <Field
+          label="Ambang Approval Produksi (Rp)"
+          hint="Order produksi dengan estimasi biaya bahan baku di atas nominal ini butuh persetujuan. Isi 0 atau kosongkan = tidak pernah butuh approval."
+        >
+          <input
+            type="number"
+            min="0"
+            className={inputClass}
+            value={ambangApproval.produksi}
+            onChange={(e) => setAmbangApproval({ ...ambangApproval, produksi: e.target.value })}
+            placeholder="0"
+          />
+        </Field>
+        <Field
+          label="Ambang Auto-Approve Penyesuaian Stok (qty)"
+          hint="Kebalikan dari dua di atas: penyesuaian stok dengan qty di bawah atau sama dengan nilai ini otomatis disetujui. Di atas nilai ini — atau kalau field ini kosong/0 — selalu butuh persetujuan manual."
+        >
+          <input
+            type="number"
+            min="0"
+            className={inputClass}
+            value={ambangApproval.stockAdjustQty}
+            onChange={(e) => setAmbangApproval({ ...ambangApproval, stockAdjustQty: e.target.value })}
+            placeholder="0"
+          />
+        </Field>
+        <Field
+          label="Ambang Auto-Approve Transfer Stok (qty)"
+          hint="Sama seperti Penyesuaian Stok di atas (qty di bawah/sama = otomatis disetujui), tapi berlaku untuk transfer stok antar lokasi."
+        >
+          <input
+            type="number"
+            min="0"
+            className={inputClass}
+            value={ambangApproval.stockTransferQty}
+            onChange={(e) => setAmbangApproval({ ...ambangApproval, stockTransferQty: e.target.value })}
+            placeholder="0"
+          />
+        </Field>
+      </SectionCard>
 
       <SectionCard
         title="Template Panggilan (Papan Panggilan)"
