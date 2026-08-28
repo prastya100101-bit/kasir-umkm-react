@@ -78,13 +78,11 @@ export async function setRolePermissions(id, pageKeys) {
 // User — controllers/userController.js, mount '/api/users'
 // (userRoutes.js). SELURUH endpoint Super Admin only.
 //
-// GAP YANG SUDAH DIKETAHUI (dicatat sebelumnya, masih berlaku di controller
-// ini): PUT /api/users/:id TIDAK menerima cabangId/subCabangId — field itu
-// ada di model User (untuk scoping multi-cabang) tapi update() cuma
-// menangani name/roleId/active/gajiPokok/password. Jadi lokasi user
-// (cabang/sub-cabang) tidak bisa diubah lewat UI ini sampai backend-nya
-// ditambah. Halaman ini menampilkan lokasi kalau ada di payload, tapi
-// tidak menyediakan form untuk menggantinya.
+// cabangId/subCabangId: sekarang bisa diset lewat create & update (dulu
+// cuma ada di skema, tidak diterima controller). Kosongkan keduanya untuk
+// akses semua lokasi (scope global) — lihat komentar resolveLocationFields
+// di userController.js untuk aturan pasangan cabangId/subCabangId
+// (subCabangId menentukan cabangId-nya, tidak boleh mismatch).
 // ============================================================
 
 // GET /api/users?active=true|false
@@ -95,27 +93,38 @@ export async function fetchUsers({ active } = {}) {
   return data
 }
 
-// POST /api/users — body: { username, password, name, roleId, gajiPokok? }
-export async function createUser({ username, password, name, roleId, gajiPokok }) {
+// POST /api/users — body: { username, password, name, roleId, gajiPokok?, cabangId?, subCabangId? }
+// cabangId/subCabangId: kosongkan (undefined/'') keduanya untuk akses semua lokasi.
+export async function createUser({ username, password, name, roleId, gajiPokok, cabangId, subCabangId }) {
   const { data } = await apiClient.post('/api/users', {
     username,
     password,
     name,
     roleId,
     gajiPokok: gajiPokok === '' || gajiPokok === undefined ? undefined : Number(gajiPokok),
+    cabangId: cabangId || undefined,
+    subCabangId: subCabangId || undefined,
   })
   return data
 }
 
-// PUT /api/users/:id — body opsional: { name?, roleId?, active?, gajiPokok?, password? }
+// PUT /api/users/:id — body opsional: { name?, roleId?, active?, gajiPokok?, password?, cabangId?, subCabangId? }
 // Kirim password HANYA kalau mau reset (kosongkan field di form kalau tidak).
-export async function updateUser(id, { name, roleId, active, gajiPokok, password }) {
+// cabangId/subCabangId: parameter locationTouched menandai form memang
+// menyertakan bagian lokasi (selalu true dari UserFormModal) — kalau
+// keduanya kosong string, dikirim literal `null` supaya backend tahu ini
+// "kosongkan ke akses semua lokasi", bukan "field tidak diubah".
+export async function updateUser(id, { name, roleId, active, gajiPokok, password, cabangId, subCabangId, locationTouched }) {
   const body = {}
   if (name !== undefined) body.name = name
   if (roleId !== undefined) body.roleId = roleId
   if (active !== undefined) body.active = active
   if (gajiPokok !== undefined && gajiPokok !== '') body.gajiPokok = Number(gajiPokok)
   if (password) body.password = password
+  if (locationTouched) {
+    body.cabangId = cabangId || null
+    body.subCabangId = subCabangId || null
+  }
   const { data } = await apiClient.put(`/api/users/${id}`, body)
   return data
 }

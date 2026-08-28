@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { changeOwnPassword } from '../api/auth'
+import { useTranslation } from '../i18n/I18nContext'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -13,6 +14,7 @@ const inputClass =
 // apapun). Dipicu dari Sidebar.jsx supaya selalu bisa diakses dari halaman
 // manapun, bukan ditaruh di SettingsPage.jsx (itu Super-Admin-only).
 export default function ChangePasswordModal({ onClose }) {
+  const { t } = useTranslation()
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -25,11 +27,11 @@ export default function ChangePasswordModal({ onClose }) {
     setError(null)
 
     if (newPassword.length < 6) {
-      setError('Password baru minimal 6 karakter.')
+      setError(t('changePassword.errorMinLength'))
       return
     }
     if (newPassword !== confirmPassword) {
-      setError('Konfirmasi password baru tidak cocok.')
+      setError(t('changePassword.errorMismatch'))
       return
     }
 
@@ -38,7 +40,7 @@ export default function ChangePasswordModal({ onClose }) {
       await changeOwnPassword({ oldPassword, newPassword })
       setSuccess(true)
     } catch (err) {
-      setError(errMsg(err, 'Gagal mengganti password.'))
+      setError(errMsg(err, t('changePassword.errorGeneric')))
     } finally {
       setBusy(false)
     }
@@ -49,7 +51,7 @@ export default function ChangePasswordModal({ onClose }) {
       <div className="w-full max-w-sm rounded-xl bg-[var(--color-surface)] p-6 shadow-lg">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold text-[var(--color-ink)]">
-            Ganti Password
+            {t('changePassword.title')}
           </h2>
           <button onClick={onClose} className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
             ✕
@@ -59,14 +61,14 @@ export default function ChangePasswordModal({ onClose }) {
         {success ? (
           <div>
             <p className="mb-4 rounded-lg bg-[var(--color-success-tint,#dcfce7)] px-4 py-2.5 text-sm text-[var(--color-success,#16a34a)]">
-              Password berhasil diubah. Gunakan password baru saat login berikutnya.
+              {t('changePassword.successMessage')}
             </p>
             <div className="flex justify-end">
               <button
                 onClick={onClose}
                 className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
               >
-                Tutup
+                {t('common.close')}
               </button>
             </div>
           </div>
@@ -78,7 +80,7 @@ export default function ChangePasswordModal({ onClose }) {
               </div>
             )}
             <label className="mb-3 block text-sm">
-              <span className="mb-1 block text-[var(--color-ink-soft)]">Password lama *</span>
+              <span className="mb-1 block text-[var(--color-ink-soft)]">{t('changePassword.oldPassword')}</span>
               <input
                 type="password"
                 className={inputClass}
@@ -89,7 +91,7 @@ export default function ChangePasswordModal({ onClose }) {
               />
             </label>
             <label className="mb-3 block text-sm">
-              <span className="mb-1 block text-[var(--color-ink-soft)]">Password baru *</span>
+              <span className="mb-1 block text-[var(--color-ink-soft)]">{t('changePassword.newPassword')}</span>
               <input
                 type="password"
                 className={inputClass}
@@ -98,10 +100,10 @@ export default function ChangePasswordModal({ onClose }) {
                 required
                 minLength={6}
               />
-              <span className="mt-1 block text-xs text-[var(--color-ink-soft)]">Minimal 6 karakter.</span>
+              <span className="mt-1 block text-xs text-[var(--color-ink-soft)]">{t('changePassword.newPasswordHint')}</span>
             </label>
             <label className="mb-3 block text-sm">
-              <span className="mb-1 block text-[var(--color-ink-soft)]">Konfirmasi password baru *</span>
+              <span className="mb-1 block text-[var(--color-ink-soft)]">{t('changePassword.confirmPassword')}</span>
               <input
                 type="password"
                 className={inputClass}
@@ -112,14 +114,14 @@ export default function ChangePasswordModal({ onClose }) {
             </label>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
-                Batal
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={busy || !oldPassword || newPassword.length < 6 || !confirmPassword}
                 className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
-                {busy ? 'Menyimpan...' : 'Simpan Password'}
+                {busy ? t('changePassword.submitting') : t('changePassword.submit')}
               </button>
             </div>
           </form>

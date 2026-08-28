@@ -17,3 +17,16 @@ export async function fetchReconciliationSummary() {
   const { data } = await apiClient.get('/api/finance/reconciliation-dashboard')
   return data
 }
+
+// ---- Preferensi Layout Dashboard per-user (Temuan Audit #19, 28 Agustus 2026) ----
+// Urutan & tampil/sembunyi widget, disimpan di database (bukan localStorage)
+// supaya sinkron di semua device — lihat controllers/dashboardController.js.
+export async function fetchDashboardLayout() {
+  const { data } = await apiClient.get('/api/dashboard/layout')
+  return data
+}
+
+export async function saveDashboardLayout({ order, hidden }) {
+  const { data } = await apiClient.put('/api/dashboard/layout', { order, hidden })
+  return data
+}

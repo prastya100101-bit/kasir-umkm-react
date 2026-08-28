@@ -15,6 +15,7 @@ import {
   fetchCashAccounts,
 } from '../api/purchasing'
 import { formatRupiah } from '../utils/format'
+import PurchaseOrderPrintModal from '../components/PurchaseOrderPrintModal'
 
 const TABS = [
   { id: 'po', label: 'Purchase Order', icon: '🧾' },
@@ -416,6 +417,7 @@ function PurchaseForm({ suppliers, subCabangOptions, defaultSubCabangId, isSuper
 function PurchaseRow({ po, isSuperAdmin, onChanged }) {
   const [isActing, setIsActing] = useState(false)
   const [error, setError] = useState(null)
+  const [showPrint, setShowPrint] = useState(false)
 
   async function act(action) {
     setIsActing(true)
@@ -458,38 +460,47 @@ function PurchaseRow({ po, isSuperAdmin, onChanged }) {
         )}
       </td>
       <td className="px-5 py-3 text-right">
-        {(canDecide || canReceive) && (
-          <div className="flex justify-end gap-2">
-            {canDecide && (
-              <>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => setShowPrint(true)}
+            className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
+          >
+            🖨️ Cetak PO
+          </button>
+          {(canDecide || canReceive) && (
+            <>
+              {canDecide && (
+                <>
+                  <button
+                    onClick={() => act('approve')}
+                    disabled={isActing}
+                    className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    Setujui
+                  </button>
+                  <button
+                    onClick={() => act('reject')}
+                    disabled={isActing}
+                    className="rounded-lg border border-[var(--color-danger)] px-3 py-1.5 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 disabled:opacity-50"
+                  >
+                    Tolak
+                  </button>
+                </>
+              )}
+              {canReceive && (
                 <button
-                  onClick={() => act('approve')}
+                  onClick={() => act('receive')}
                   disabled={isActing}
-                  className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  className="rounded-lg border border-[var(--color-brand)] px-3 py-1.5 text-sm font-medium text-[var(--color-brand)] hover:bg-[var(--color-brand)]/5 disabled:opacity-50"
                 >
-                  Setujui
+                  Terima Barang
                 </button>
-                <button
-                  onClick={() => act('reject')}
-                  disabled={isActing}
-                  className="rounded-lg border border-[var(--color-danger)] px-3 py-1.5 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 disabled:opacity-50"
-                >
-                  Tolak
-                </button>
-              </>
-            )}
-            {canReceive && (
-              <button
-                onClick={() => act('receive')}
-                disabled={isActing}
-                className="rounded-lg border border-[var(--color-brand)] px-3 py-1.5 text-sm font-medium text-[var(--color-brand)] hover:bg-[var(--color-brand)]/5 disabled:opacity-50"
-              >
-                Terima Barang
-              </button>
-            )}
-          </div>
-        )}
+              )}
+            </>
+          )}
+        </div>
         {error && <p className="mt-1 text-xs text-[var(--color-danger)]">{error}</p>}
+        {showPrint && <PurchaseOrderPrintModal po={po} onClose={() => setShowPrint(false)} />}
       </td>
     </tr>
   )
@@ -501,6 +512,7 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
+  const [search, setSearch] = useState('')
 
   const load = useCallback((s) => {
     setIsLoading(true)
@@ -515,7 +527,12 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
     load(approvalStatus)
   }, [load, approvalStatus])
 
-  const list = purchases || []
+  const allList = purchases || []
+  const list = allList.filter((p) => {
+    if (!search.trim()) return true
+    const q = search.trim().toLowerCase()
+    return (p.code || '').toLowerCase().includes(q) || (p.supplier?.name || '').toLowerCase().includes(q)
+  })
   const totalNilai = list.reduce((a, p) => a + Number(p.total), 0)
   const pendingCount = list.filter((p) => p.approvalStatus === 'pending').length
   const belumDiterimaCount = list.filter((p) => p.status !== 'diterima').length
@@ -529,20 +546,28 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
       </div>
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-sm w-fit">
-          {APPROVAL_FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setApprovalStatus(f.id)}
-              className={`rounded px-3 py-1 font-medium transition-colors ${
-                approvalStatus === f.id
-                  ? 'bg-[var(--color-brand)] text-white'
-                  : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-sm w-fit">
+            {APPROVAL_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setApprovalStatus(f.id)}
+                className={`rounded px-3 py-1 font-medium transition-colors ${
+                  approvalStatus === f.id
+                    ? 'bg-[var(--color-brand)] text-white'
+                    : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <input
+            className={`${inputClass} w-52`}
+            placeholder="Cari kode PO/supplier..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
 
         {!showForm && (
@@ -580,13 +605,19 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
         </div>
       )}
 
+      {!isLoading && !error && purchases && purchases.length > 0 && list.length === 0 && (
+        <div className="flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
+          <p className="text-sm text-[var(--color-ink-soft)]">Tidak ada PO yang cocok dengan pencarian.</p>
+        </div>
+      )}
+
       {!isLoading && !error && (!purchases || purchases.length === 0) && (
         <div className="flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
           <p className="text-sm text-[var(--color-ink-soft)]">Belum ada Purchase Order.</p>
         </div>
       )}
 
-      {!isLoading && !error && purchases && purchases.length > 0 && (
+      {!isLoading && !error && list.length > 0 && (
         <div className="card-elevated overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
           <table className="w-full text-sm">
             <thead>
@@ -602,7 +633,7 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
               </tr>
             </thead>
             <tbody>
-              {purchases.map((po) => (
+              {list.map((po) => (
                 <PurchaseRow key={po.id} po={po} isSuperAdmin={isSuperAdmin} onChanged={() => load(approvalStatus)} />
               ))}
             </tbody>
@@ -727,6 +758,7 @@ function DebtTab({ isSuperAdmin }) {
   const [cashAccounts, setCashAccounts] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [search, setSearch] = useState('')
 
   const load = useCallback((s) => {
     setIsLoading(true)
@@ -753,7 +785,12 @@ function DebtTab({ isSuperAdmin }) {
     { id: 'lunas', label: 'Lunas' },
   ]
 
-  const list = debts || []
+  const allList = debts || []
+  const list = allList.filter((d) => {
+    if (!search.trim()) return true
+    const q = search.trim().toLowerCase()
+    return (d.code || d.purchaseCode || '').toLowerCase().includes(q) || (d.supplier?.name || '').toLowerCase().includes(q)
+  })
   const totalSisa = list.reduce((a, d) => a + (Number(d.total) - Number(d.terbayar)), 0)
   const belumLunasCount = list.filter((d) => d.status !== 'lunas').length
   const supplierCount = new Set(list.filter((d) => d.status !== 'lunas').map((d) => d.supplier?.id)).size
@@ -766,20 +803,28 @@ function DebtTab({ isSuperAdmin }) {
         <StatCard icon="🏬" label="Supplier Berutang" value={`${supplierCount} supplier`} />
       </div>
 
-      <div className="mb-3 flex gap-1 rounded-md border border-[var(--color-border)] p-1 text-sm w-fit">
-        {DEBT_FILTERS.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setStatus(f.id)}
-            className={`rounded px-3 py-1 font-medium transition-colors ${
-              status === f.id
-                ? 'bg-[var(--color-brand)] text-white'
-                : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 rounded-md border border-[var(--color-border)] p-1 text-sm w-fit">
+          {DEBT_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setStatus(f.id)}
+              className={`rounded px-3 py-1 font-medium transition-colors ${
+                status === f.id
+                  ? 'bg-[var(--color-brand)] text-white'
+                  : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <input
+          className={`${inputClass} w-52`}
+          placeholder="Cari kode PO/supplier..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {error && (
@@ -796,13 +841,19 @@ function DebtTab({ isSuperAdmin }) {
         </div>
       )}
 
+      {!isLoading && !error && debts && debts.length > 0 && list.length === 0 && (
+        <div className="flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
+          <p className="text-sm text-[var(--color-ink-soft)]">Tidak ada utang yang cocok dengan pencarian.</p>
+        </div>
+      )}
+
       {!isLoading && !error && (!debts || debts.length === 0) && (
         <div className="flex h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border)] text-center">
           <p className="text-sm text-[var(--color-ink-soft)]">Belum ada utang supplier.</p>
         </div>
       )}
 
-      {!isLoading && !error && debts && debts.length > 0 && (
+      {!isLoading && !error && list.length > 0 && (
         <div className="card-elevated overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
           <table className="w-full text-sm">
             <thead>
@@ -818,7 +869,7 @@ function DebtTab({ isSuperAdmin }) {
               </tr>
             </thead>
             <tbody>
-              {debts.map((debt) => (
+              {list.map((debt) => (
                 <DebtRow
                   key={debt.id}
                   debt={debt}

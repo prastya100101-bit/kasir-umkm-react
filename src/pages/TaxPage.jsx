@@ -11,6 +11,7 @@ import {
   deleteTaxRecord,
 } from '../api/tax'
 import { formatRupiah } from '../utils/format'
+import { downloadCsv } from '../utils/exportCsv'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -68,6 +69,20 @@ function ApprovalBadge({ status }) {
   }
   const label = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' }[status] || status
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${map[status] || ''}`}>{label}</span>
+}
+
+// Tombol export CSV — pola sama dengan ExportCsvButton di AccountingPage.jsx.
+function ExportCsvButton({ onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)] disabled:opacity-40"
+    >
+      ⬇ Export CSV
+    </button>
+  )
 }
 
 function currentYear() {
@@ -258,11 +273,30 @@ export default function TaxPage() {
     }
   }
 
+  const approvalLabel = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' }
+
+  function handleExportCsv() {
+    if (!records.length) return
+    downloadCsv(
+      `laporan-pajak_${tahun}`,
+      records,
+      [
+        { key: 'periode', label: 'Periode' },
+        { key: 'omzetBruto', label: 'Omzet Bruto (Rp)', value: (r) => Number(r.omzetBruto || 0) },
+        { key: 'omzetKenaPajak', label: 'Omzet Kena Pajak (Rp)', value: (r) => Number(r.omzetKenaPajak || 0) },
+        { key: 'tarifDipakai', label: 'Tarif (%)', value: (r) => Number(r.tarifDipakai || 0) },
+        { key: 'pajakTerutang', label: 'Pajak Terutang (Rp)', value: (r) => Number(r.pajakTerutang || 0) },
+        { key: 'approvalStatus', label: 'Status', value: (r) => approvalLabel[r.approvalStatus] || r.approvalStatus },
+        { key: 'sudahDibayar', label: 'Sudah Dibayar', value: (r) => (r.sudahDibayar ? 'Lunas' : 'Belum') },
+      ]
+    )
+  }
+
   return (
     <AppLayout title="Pajak UMKM" icon={FileText}>
       <HitungForm onCreated={load} />
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <Field label="Tahun Pajak">
           <select className={inputClass} value={tahun} onChange={(e) => setTahun(Number(e.target.value))}>
             {yearOptions.map((y) => (
@@ -272,6 +306,7 @@ export default function TaxPage() {
             ))}
           </select>
         </Field>
+        <ExportCsvButton onClick={handleExportCsv} disabled={!records.length} />
       </div>
 
       {recap && (

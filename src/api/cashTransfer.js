@@ -12,9 +12,11 @@ import apiClient from './client'
 // Super Admin — backend yang menegakkan, frontend cuma menampilkan tombol.
 // ============================================================
 
-export async function fetchCashTransfers({ status } = {}) {
+export async function fetchCashTransfers({ status, from, to } = {}) {
   const params = {}
   if (status) params.status = status
+  if (from) params.from = from
+  if (to) params.to = to
   const { data } = await apiClient.get('/api/finance/cash-transfers', { params })
   return data
 }

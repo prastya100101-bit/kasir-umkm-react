@@ -27,6 +27,7 @@ import {
   resetTestingData,
 } from '../api/auth'
 import { fetchSettings } from '../api/settings'
+import { fetchAllLocations } from '../api/locations'
 
 const TABS = [
   { id: 'roles', label: 'Manajemen Role' },
@@ -403,6 +404,7 @@ function RolePermissionModal({ role, onClose, onSaved }) {
 function UserTab({ currentUserId }) {
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
+  const [locations, setLocations] = useState([]) // { id, name, type: 'CABANG'|'SUBCABANG', parentId }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [filterActive, setFilterActive] = useState('all') // all | true | false
@@ -415,9 +417,10 @@ function UserTab({ currentUserId }) {
     setError(null)
     try {
       const params = filterActive === 'all' ? {} : { active: filterActive }
-      const [u, r] = await Promise.all([fetchUsers(params), fetchRoles()])
+      const [u, r, l] = await Promise.all([fetchUsers(params), fetchRoles(), fetchAllLocations()])
       setUsers(u)
       setRoles(r)
+      setLocations(l)
     } catch (err) {
       setError(errMsg(err, 'Gagal memuat daftar user.'))
     } finally {
@@ -471,6 +474,17 @@ function UserTab({ currentUserId }) {
 
   const isLocked = (u) => u.lockedUntil && new Date(u.lockedUntil) > new Date()
 
+  // Label ringkas lokasi user untuk kolom tabel: "Semua Lokasi" (global),
+  // "Nama Cabang" (scope level Cabang), atau "Nama Cabang · Nama SubCabang"
+  // (scope 1 SubCabang). Pakai data cabang/subCabang yang sudah di-include
+  // langsung dari SAFE_SELECT backend, bukan cari manual dari `locations`,
+  // supaya tetap benar walau lokasinya sudah nonaktif/dihapus dari daftar.
+  function locationLabel(u) {
+    if (u.subCabang) return `${u.cabang?.name ?? '—'} · ${u.subCabang.name}`
+    if (u.cabang) return u.cabang.name
+    return 'Semua Lokasi'
+  }
+
   return (
     <div>
       <ErrorBanner message={error} />
@@ -512,6 +526,7 @@ function UserTab({ currentUserId }) {
                 <th className="px-4 py-3">Nama</th>
                 <th className="px-4 py-3">Username</th>
                 <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Lokasi</th>
                 <th className="px-4 py-3">Gaji Pokok</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Aksi</th>
@@ -526,6 +541,7 @@ function UserTab({ currentUserId }) {
                   </td>
                   <td className="px-4 py-3 text-[var(--color-ink-soft)]">{u.username}</td>
                   <td className="px-4 py-3">{u.role?.name || '-'}</td>
+                  <td className="px-4 py-3 text-[var(--color-ink-soft)]">{locationLabel(u)}</td>
                   <td className="px-4 py-3">{u.gajiPokok ? formatRupiah(u.gajiPokok) : '-'}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
@@ -581,6 +597,7 @@ function UserTab({ currentUserId }) {
       {showCreate && (
         <UserFormModal
           roles={roles}
+          locations={locations}
           onClose={() => setShowCreate(false)}
           onSaved={() => {
             setShowCreate(false)
@@ -593,6 +610,7 @@ function UserTab({ currentUserId }) {
         <UserFormModal
           user={editingUser}
           roles={roles}
+          locations={locations}
           onClose={() => setEditingUser(null)}
           onSaved={() => {
             setEditingUser(null)
@@ -604,15 +622,30 @@ function UserTab({ currentUserId }) {
   )
 }
 
-function UserFormModal({ user, roles, onClose, onSaved }) {
+function UserFormModal({ user, roles, locations, onClose, onSaved }) {
   const isEdit = !!user
   const [username, setUsername] = useState(user?.username || '')
   const [name, setName] = useState(user?.name || '')
   const [roleId, setRoleId] = useState(user?.roleId || '')
   const [gajiPokok, setGajiPokok] = useState(user?.gajiPokok ?? '')
   const [password, setPassword] = useState('')
+  // Cabang/Sub-Cabang: kosong ('') = akses semua lokasi (scope global).
+  // Sub-Cabang kosong dengan Cabang terisi = scope level Cabang (semua
+  // SubCabang di bawahnya) — lihat locationMiddleware.js.
+  const [cabangId, setCabangId] = useState(user?.cabangId || '')
+  const [subCabangId, setSubCabangId] = useState(user?.subCabangId || '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+
+  const cabangs = (locations || []).filter((l) => l.type === 'CABANG')
+  const subCabangsInCabang = (locations || []).filter((l) => l.type === 'SUBCABANG' && l.parentId === cabangId)
+
+  function handleCabangChange(newCabangId) {
+    setCabangId(newCabangId)
+    // Ganti Cabang otomatis reset Sub-Cabang — pilihan lama kemungkinan
+    // besar bukan anak dari Cabang yang baru dipilih.
+    setSubCabangId('')
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -620,14 +653,22 @@ function UserFormModal({ user, roles, onClose, onSaved }) {
     setError(null)
     try {
       if (isEdit) {
-        await updateUser(user.id, { name, roleId, gajiPokok, password: password || undefined })
+        await updateUser(user.id, {
+          name,
+          roleId,
+          gajiPokok,
+          password: password || undefined,
+          cabangId,
+          subCabangId,
+          locationTouched: true,
+        })
       } else {
         if (password.length < 6) {
           setError('Password minimal 6 karakter')
           setSaving(false)
           return
         }
-        await createUser({ username, password, name, roleId, gajiPokok })
+        await createUser({ username, password, name, roleId, gajiPokok, cabangId, subCabangId })
       }
       onSaved()
     } catch (err) {
@@ -661,6 +702,31 @@ function UserFormModal({ user, roles, onClose, onSaved }) {
             ))}
           </select>
         </Field>
+        <Field label="Cabang">
+          <select className={inputClass} value={cabangId} onChange={(e) => handleCabangChange(e.target.value)}>
+            <option value="">Semua Cabang (akses global)</option>
+            {cabangs.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Sub-Cabang">
+          <select
+            className={inputClass}
+            value={subCabangId}
+            onChange={(e) => setSubCabangId(e.target.value)}
+            disabled={!cabangId}
+          >
+            <option value="">{cabangId ? 'Semua Sub-Cabang di cabang ini' : 'Pilih Cabang dulu'}</option>
+            {subCabangsInCabang.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label="Gaji Pokok (opsional)">
           <input
             type="number"
@@ -680,11 +746,6 @@ function UserFormModal({ user, roles, onClose, onSaved }) {
             required={!isEdit}
           />
         </Field>
-        {isEdit && (
-          <p className="mb-3 text-xs text-[var(--color-ink-soft)]">
-            Cabang/sub-cabang user belum bisa diubah dari sini — backend belum menerima field itu di endpoint update.
-          </p>
-        )}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm font-medium text-[var(--color-ink-soft)]">
             Batal

@@ -36,10 +36,71 @@
   --shadow-card: 0 1px 2px rgba(18, 51, 58, 0.04), 0 4px 12px rgba(18, 51, 58, 0.06);
 }
 
+/* === Temuan #16 (28 Agustus 2026) — Mode Gelap ===
+   Strategi: override token WARNA yang sama (bukan bikin skema/util class
+   baru) di scope `html.dark`. Karena hampir seluruh halaman sudah konsisten
+   pakai `var(--color-*)` (bukan warna Tailwind default seperti bg-white/
+   text-gray-500), override di satu tempat ini otomatis mengalir ke ~semua
+   halaman tanpa perlu menyentuh file per halaman satu-satu — itu sebabnya
+   temuan ini bisa selesai dengan effort kecil meski aplikasinya besar.
+
+   Nada warna dark dipilih supaya identitas "teal & brass" tetap kerasa
+   (bukan dark mode abu-abu generik), sekaligus tetap jaga kontras teks
+   pada pola "bg-X/10 + text-X" (badge/banner tint) yang dipakai luas di
+   banyak halaman: --color-brand/-accent/-success/-danger/-warning di dark
+   mode SENGAJA dibikin lebih terang dari versi light (supaya kebaca sebagai
+   teks di atas kanvas gelap), sementara -tint/-soft yang biasa jadi
+   pasangan background-nya dibikin gelap (kebalikan dari light mode).
+
+   Catatan jujur: kombinasi warna hardcode `text-white` di atas
+   bg-[var(--color-danger|warning|brand)] (banyak dipakai buat tombol
+   hapus/status di halaman yang TIDAK ikut disentuh sesi ini) sudah dicek
+   kontrasnya cukup (bukan asal terang), tapi badge kecil/dekoratif di
+   halaman yang belum diaudit ulang visualnya mungkin masih ada yang agak
+   kurang optimal kontrasnya — bukan blocker, cuma catatan kalau nanti mau
+   polish visual lebih jauh. */
+html.dark {
+  --color-ink: #ECEAE1;
+  --color-ink-soft: #9DA8A2;
+  --color-canvas: #101613;
+  --color-surface: #1A2622;
+  --color-border: #2D3934;
+
+  --color-brand: #2D6E78;
+  --color-brand-soft: #3F8993;
+  --color-brand-tint: #142B28;
+
+  --color-accent: #8F6B28;
+  --color-accent-soft: #33280F;
+  --color-accent-ink: #FAF1DC;
+
+  --color-success: #4E9B71;
+  --color-success-tint: #152A1D;
+  --color-danger: #B85252;
+  --color-danger-tint: #2A1616;
+  --color-warning: #B8903F;
+  --color-warning-tint: #2C2210;
+}
+
 html {
   font-family: var(--font-body);
   color: var(--color-ink);
   background: var(--color-canvas);
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Transisi halus pas toggle, tapi tidak dipasang global ke semua properti
+   (mahal & bisa bikin animasi lain jadi aneh) — cukup warna & background. */
+body,
+button,
+input,
+select,
+textarea {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 /* Rupiah / angka selalu pakai font ledger dengan tabular alignment —

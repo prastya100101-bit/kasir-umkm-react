@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { ThemeProvider } from './context/ThemeContext'
+import { LanguageProvider } from './i18n/I18nContext'
 import ProtectedRoute from './routes/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -39,8 +41,10 @@ import { ROLES } from './context/AuthContext'
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ThemeProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
@@ -403,6 +407,8 @@ export default function App() {
           />
         </Routes>
       </BrowserRouter>
-    </AuthProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </ThemeProvider>
   )
 }

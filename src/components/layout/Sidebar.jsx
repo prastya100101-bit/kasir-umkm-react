@@ -39,6 +39,7 @@ import {
 } from 'lucide-react'
 import { useAuth, ROLES } from '../../context/AuthContext'
 import ChangePasswordModal from '../ChangePasswordModal'
+import { useTranslation } from '../../i18n/I18nContext'
 
 // Menu per role. Kasir sengaja dikasih menu paling ringkas —
 // dashboard 3-level artinya tiap role lihat porsi yang relevan buat dia saja.
@@ -53,86 +54,86 @@ import ChangePasswordModal from '../ChangePasswordModal'
 // Piutang/Utang" -> "Proyeksi Kas", "Rekomendasi Harga (AI)" -> "Rekomendasi
 // Harga"), makna & routing (`to`) sama sekali tidak berubah.
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'utama' },
-  { to: '/kasir', label: 'Kasir', icon: ShoppingCart, roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
+  { to: '/', labelKey: 'nav.items.dashboard', icon: LayoutDashboard, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'utama' },
+  { to: '/kasir', labelKey: 'nav.items.kasir', icon: ShoppingCart, roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
   // Riwayat Penjualan — daftar transaksi (beda dari Kasir yang layar checkout
   // aktif). Akses sama dengan Kasir; scope data per lokasi ditegakkan backend
   // (scopeWhere di kasirRoutes.js & dashboardController.js), sama pola dengan
   // Riwayat Shift di grup SDM.
-  { to: '/riwayat-penjualan', label: 'Riwayat Penjualan', icon: Receipt, roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
+  { to: '/riwayat-penjualan', labelKey: 'nav.items.riwayatPenjualan', icon: Receipt, roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
   // Meja/Preorder/Antrian QR Order — akses sama dengan Kasir (backend
   // mejaRoutes/preorderRoutes/qrOrderRoutes cuma verifyToken, tidak
   // digerbangi pageKey/requireRole khusus selain aksi tulis tertentu).
-  { to: '/meja', label: 'Meja & Preorder', icon: Table2, roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
-  { to: '/master-data', label: 'Master Data', icon: Database, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/meja', labelKey: 'nav.items.mejaPreorder', icon: Table2, roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
+  { to: '/master-data', labelKey: 'nav.items.masterData', icon: Database, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Promo/Diskon — backend requirePage('promo'), kemungkinan besar belum
   // di-grant ke role selain Super Admin di RolePagePermission (lihat
   // komentar kepala promoRoutes.js). Kalau Manager/SPV dapat 403, atur
   // dulu lewat Manajemen Role > Izin Halaman.
-  { to: '/promo', label: 'Promo / Diskon', icon: BadgePercent, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'penjualan' },
+  { to: '/promo', labelKey: 'nav.items.promo', icon: BadgePercent, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'penjualan' },
   // Dashboard Anomali — backend requirePage('anomali'), kemungkinan besar
   // belum di-grant ke role selain Super Admin (sama pola Promo). Kalau
   // Manager/SPV dapat 403, atur lewat Manajemen Role > Izin Halaman.
-  { to: '/anomali', label: 'Dashboard Anomali', icon: AlertTriangle, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'penjualan' },
+  { to: '/anomali', labelKey: 'nav.items.anomali', icon: AlertTriangle, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'penjualan' },
   // Pengeluaran/Beban — backend expenseRoutes.js: GET terbuka semua role
   // login, mutasi (create/update/delete) dikunci Super Admin di route level.
-  { to: '/pengeluaran', label: 'Pengeluaran / Beban', icon: Wallet, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
+  { to: '/pengeluaran', labelKey: 'nav.items.pengeluaran', icon: Wallet, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
   // Proyeksi Kas & Piutang/Utang — backend Super Admin-only (data sensitif
   // posisi kas & siapa berutang/piutang), beda dari nav di dekatnya. Label
   // dipersingkat jadi "Proyeksi Kas" (route & fungsinya tidak berubah).
-  { to: '/proyeksi-kas', label: 'Proyeksi Kas', icon: LineChart, roles: [ROLES.SUPER_ADMIN], group: 'keuangan' },
+  { to: '/proyeksi-kas', labelKey: 'nav.items.proyeksiKas', icon: LineChart, roles: [ROLES.SUPER_ADMIN], group: 'keuangan' },
   {
     to: '/stok-penuh',
-    label: 'Stok Penuh',
+    labelKey: 'nav.items.stokPenuh',
     icon: PackageCheck,
     roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW],
     group: 'operasional',
   },
-  { to: '/margin', label: 'Margin Lokasi', icon: Percent, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/margin', labelKey: 'nav.items.marginLokasi', icon: Percent, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Rekomendasi Harga & Analisa Produk (AI) — backend requirePage('priceanalysis'),
   // kemungkinan besar belum di-grant ke role selain Super Admin (sama pola
   // Promo/Anomali). Kalau Manager/SPV dapat 403, atur lewat Manajemen Role > Izin
   // Halaman. Label dipersingkat jadi "Rekomendasi Harga".
-  { to: '/analisa-harga', label: 'Rekomendasi Harga', icon: Sparkles, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/analisa-harga', labelKey: 'nav.items.rekomendasiHarga', icon: Sparkles, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Prediksi Stok (AI) — backend requirePage('stockpredict'), sama pola akses
   // dengan Rekomendasi Harga di atas. Label dipersingkat jadi "Prediksi Stok".
-  { to: '/prediksi-stok', label: 'Prediksi Stok', icon: BarChart3, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
-  { to: '/purchasing', label: 'Purchasing', icon: Truck, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
-  { to: '/produksi', label: 'Produksi', icon: Factory, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/prediksi-stok', labelKey: 'nav.items.prediksiStok', icon: BarChart3, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/purchasing', labelKey: 'nav.items.purchasing', icon: Truck, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/produksi', labelKey: 'nav.items.produksi', icon: Factory, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Aset Tetap — backend assetRoutes.js cuma verifyToken buat baca (semua
   // yang login boleh lihat daftar/detail/riwayat penyusutan), tapi
   // requireRole('Super Admin') buat tulis (tambah/ubah/hapus/lepas/jalankan
   // penyusutan). Menu ditaruh setara Master Data/Purchasing (SPV ke atas),
   // AsetTetapPage.jsx sendiri yang menyembunyikan form/tombol tulis kalau
   // role bukan Super Admin.
-  { to: '/aset-tetap', label: 'Aset Tetap', icon: Building2, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/aset-tetap', labelKey: 'nav.items.asetTetap', icon: Building2, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Konsinyasi — backend consignmentRoutes.js cuma verifyToken buat baca &
   // aksi transaksional (buka/tutup batch, bayar tagihan); requireRole('Super
   // Admin') cuma buat update/delete master data Penitip (Consignor).
   // ConsignmentPage.jsx sendiri yang menyembunyikan tombol edit/hapus
   // penitip kalau role bukan Super Admin.
-  { to: '/konsinyasi', label: 'Konsinyasi', icon: Handshake, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/konsinyasi', labelKey: 'nav.items.konsinyasi', icon: Handshake, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Budgeting — backend budgetingRoutes.js digerbangi requirePage('budgeting')
   // untuk baca/buat/edit/laporan, requireRole('Super Admin') untuk
   // setuju/tolak/hapus. costCenterRoutes.js baca ikut requirePage('budgeting')
   // juga, mutasi Super-Admin-only. approvalConfigRoutes.js (tab Threshold)
   // SELURUHNYA Super-Admin-only — BudgetingPage.jsx sendiri yang
   // menyembunyikan tab itu kalau bukan Super Admin.
-  { to: '/budgeting', label: 'Budgeting', icon: PiggyBank, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
+  { to: '/budgeting', labelKey: 'nav.items.budgeting', icon: PiggyBank, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
   // Pajak UMKM — backend taxRoutes.js digerbangi requirePage('tax') untuk
   // baca/hitung/hitung-ulang, requireRole() default (Super Admin) untuk
   // keputusan/bayar/hapus. TaxPage.jsx sendiri yang menyembunyikan tombol
   // Setujui/Tolak/Tandai Lunas/Hapus kalau bukan Super Admin.
-  { to: '/pajak', label: 'Pajak UMKM', icon: FileText, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
+  { to: '/pajak', labelKey: 'nav.items.pajak', icon: FileText, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
   // Payroll SENGAJA tidak termasuk SPV/Kasir/Crew — pageKey 'payroll'
   // cuma di-grant ke Manager (& Super Admin bypass), lihat prisma/seed.js
   // dan scripts/add-page-permission-payroll.js.
-  { to: '/payroll', label: 'Payroll', icon: Banknote, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER], group: 'sdm' },
+  { to: '/payroll', labelKey: 'nav.items.payroll', icon: Banknote, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER], group: 'sdm' },
   // HRIS SENGAJA termasuk SEMUA role — self-service (absensi & ajukan
   // cuti sendiri) tidak digerbangi pageKey apapun di backend. Tab "Rekap
   // Tim"/"Approve Cuti" di dalam halaman muncul sendiri sesuai role,
   // lihat HrisPage.jsx.
-  { to: '/hris', label: 'Absensi & Cuti', icon: CalendarCheck, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'sdm' },
+  { to: '/hris', labelKey: 'nav.items.absensiCuti', icon: CalendarCheck, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'sdm' },
   // Jadwal Shift & Tim — backend scheduleRoutes.js: '/my-schedule' TERBUKA
   // semua role login (verifyToken saja), sisanya (template shift, CRUD
   // assignment, daftar karyawan) digerbangi requirePage('jadwal-shift') —
@@ -142,33 +143,33 @@ const NAV_ITEMS = [
   // Manager/SPV bisa kelola jadwal. SchedulePage.jsx sendiri yang
   // menyembunyikan tab "Kelola Jadwal"/"Template Shift" kalau bukan
   // Manager/SPV/Super Admin. Label dipersingkat jadi "Jadwal Shift".
-  { to: '/jadwal-shift', label: 'Jadwal Shift', icon: CalendarClock, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'sdm' },
+  { to: '/jadwal-shift', labelKey: 'nav.items.jadwalShift', icon: CalendarClock, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'sdm' },
   // Riwayat Shift — beda dari Jadwal Shift & Tim di atas (itu penjadwalan
   // karyawan). Ini laporan buka/tutup shift kasir lintas waktu, dipasok
   // dari GET /api/dashboard/full-data. Terbuka semua role, tab "Semua
   // Kasir" cuma muncul untuk Manager/SPV/Super Admin di dalam halaman.
-  { to: '/riwayat-shift', label: 'Riwayat Shift', icon: History, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'sdm' },
+  { to: '/riwayat-shift', labelKey: 'nav.items.riwayatShift', icon: History, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'sdm' },
   // Akuntansi (Jurnal & COA) — SELURUH endpoint accountingRoutes.js
   // Super-Admin-only (accountingController.js cek req.user.role?.isSuperAdmin
   // di semua fungsi kecuali getChartOfAccounts). Menu sengaja tidak
   // ditampilkan ke Manager/SPV sama sekali (beda dari Budgeting/Pajak yang
   // masih punya tab terbuka), AccountingPage.jsx juga menolak render kalau
   // bukan Super Admin (defense-in-depth kalau ada yang akses URL langsung).
-  { to: '/akuntansi', label: 'Akuntansi', icon: Calculator, roles: [ROLES.SUPER_ADMIN], group: 'keuangan' },
+  { to: '/akuntansi', labelKey: 'nav.items.akuntansi', icon: Calculator, roles: [ROLES.SUPER_ADMIN], group: 'keuangan' },
   // Manajemen Role & User — backend roleRoutes.js & userRoutes.js SELURUH
   // endpoint Super Admin only, tidak ada tab yang terbuka untuk role lain
   // (beda dari Budgeting/Pajak). Sengaja Super-Admin-only di menu juga.
   // Label dipersingkat jadi "Role & User".
-  { to: '/manajemen-akses', label: 'Role & User', icon: Users, roles: [ROLES.SUPER_ADMIN], group: 'administrasi' },
+  { to: '/manajemen-akses', labelKey: 'nav.items.roleUser', icon: Users, roles: [ROLES.SUPER_ADMIN], group: 'administrasi' },
   // Pengaturan Bisnis — backend settingsRoutes.js requireRole('Super Admin')
   // untuk baca/tulis lengkap. Sengaja Super-Admin-only di menu juga.
-  { to: '/pengaturan', label: 'Pengaturan', icon: Settings, roles: [ROLES.SUPER_ADMIN], group: 'administrasi' },
+  { to: '/pengaturan', labelKey: 'nav.items.pengaturan', icon: Settings, roles: [ROLES.SUPER_ADMIN], group: 'administrasi' },
   // Transfer Kas SENGAJA termasuk SEMUA role juga — backend cash-transfers
   // di financeRoutes.js cuma verifyToken+applyLocationScope, TIDAK digerbangi
   // pageKey/requireRole apapun (beda dari cash-accounts CRUD yang tetap
   // Super-Admin-only). SubCabang Kasir/Crew bisa jadi sisi pengirim, Cabang
   // Manager/SPV sisi penerima yang konfirmasi.
-  { to: '/cash-transfer', label: 'Transfer Kas', icon: ArrowLeftRight, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'keuangan' },
+  { to: '/cash-transfer', labelKey: 'nav.items.transferKas', icon: ArrowLeftRight, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'keuangan' },
   // Rekening Kas & Bank — CRUD akun + transfer pembukuan internal
   // (financeController.js: listCashAccounts/createCashAccount/updateCashAccount/
   // deleteCashAccount/transferBetweenCashAccounts). Lihat non tunai — beda dari
@@ -176,26 +177,26 @@ const NAV_ITEMS = [
   // create/update/delete Super-Admin-only di backend, halaman sendiri yang
   // menyembunyikan tombolnya untuk role lain. Label dipersingkat jadi
   // "Rekening Kas".
-  { to: '/rekening', label: 'Rekening Kas', icon: Landmark, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
-  { to: '/stock-rebalancing', label: 'Stock Rebalancing', icon: RefreshCw, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
-  { to: '/rekonsiliasi', label: 'Rekonsiliasi', icon: ClipboardCheck, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/rekening', labelKey: 'nav.items.rekeningKas', icon: Landmark, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },
+  { to: '/stock-rebalancing', labelKey: 'nav.items.stockRebalancing', icon: RefreshCw, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/rekonsiliasi', labelKey: 'nav.items.rekonsiliasi', icon: ClipboardCheck, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
   // Rekonsiliasi Bank — beda dari "Rekonsiliasi" di atas (itu dashboard
   // alert Piutang/Kas). Ini import mutasi bank + matching transaksi,
   // backend bankReconciliationRoutes.js requireRole('Super Admin') untuk
   // semua aksi tulis — BankReconciliationPage.jsx sendiri yang
   // menyembunyikan form-nya kalau bukan Super Admin.
-  { to: '/rekonsiliasi-bank', label: 'Rekonsiliasi Bank', icon: FileCheck2, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
+  { to: '/rekonsiliasi-bank', labelKey: 'nav.items.rekonsiliasiBank', icon: FileCheck2, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'operasional' },
 ]
 
 // Urutan tampil kelompok di sidebar. id-nya harus cocok dengan field
 // `group` di NAV_ITEMS di atas.
 const GROUPS = [
-  { id: 'utama', label: 'Utama' },
-  { id: 'operasional', label: 'Operasional & Stok' },
-  { id: 'penjualan', label: 'Penjualan & Promo' },
-  { id: 'keuangan', label: 'Keuangan & Akuntansi' },
-  { id: 'sdm', label: 'SDM & Jadwal' },
-  { id: 'administrasi', label: 'Administrasi' },
+  { id: 'utama', labelKey: 'nav.groups.utama' },
+  { id: 'operasional', labelKey: 'nav.groups.operasional' },
+  { id: 'penjualan', labelKey: 'nav.groups.penjualan' },
+  { id: 'keuangan', labelKey: 'nav.groups.keuangan' },
+  { id: 'sdm', labelKey: 'nav.groups.sdm' },
+  { id: 'administrasi', labelKey: 'nav.groups.administrasi' },
 ]
 
 // Sidebar dipakai di 2 mode, dikontrol lewat props `open`/`onClose` dari
@@ -209,10 +210,21 @@ const GROUPS = [
 //     handleNavClick). Tombol pembukanya ada di TopBar (ikon Menu).
 export default function Sidebar({ open, onClose }) {
   const { role, logout, user } = useAuth()
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [showChangePassword, setShowChangePassword] = useState(false)
 
-  const items = useMemo(() => NAV_ITEMS.filter((item) => item.roles.includes(role)), [role])
+  // Label ditranslasi di sini (bukan cuma pas render) supaya pencarian di
+  // bawah bisa mencocokkan teks yang MEMANG sedang tampil ke user — jadi
+  // pencarian tetap kerasa benar terlepas dari bahasa yang sedang aktif.
+  const items = useMemo(
+    () =>
+      NAV_ITEMS.filter((item) => item.roles.includes(role)).map((item) => ({
+        ...item,
+        label: t(item.labelKey),
+      })),
+    [role, t],
+  )
 
   const q = query.trim().toLowerCase()
   const filteredItems = q ? items.filter((item) => item.label.toLowerCase().includes(q)) : items
@@ -285,7 +297,7 @@ export default function Sidebar({ open, onClose }) {
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white md:hidden"
-            aria-label="Tutup menu"
+            aria-label={t('nav.closeMenu')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -301,7 +313,7 @@ export default function Sidebar({ open, onClose }) {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari menu..."
+              placeholder={t('nav.searchPlaceholder')}
               className="w-full rounded-lg border border-white/10 bg-white/10 py-2 pl-8 pr-3 text-sm text-white placeholder:text-white/40 outline-none transition-colors focus:border-white/30 focus:bg-white/15"
             />
           </div>
@@ -314,7 +326,7 @@ export default function Sidebar({ open, onClose }) {
             return (
               <div key={g.id} className="mb-3 last:mb-0">
                 <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-white/40">
-                  {g.label}
+                  {t(g.labelKey)}
                 </p>
                 <div className="flex flex-col gap-1">
                   {groupItems.map((item) => {
@@ -346,7 +358,7 @@ export default function Sidebar({ open, onClose }) {
 
           {q && filteredItems.length === 0 && (
             <p className="px-3 py-6 text-center text-sm text-white/40">
-              Menu "{query}" tidak ditemukan.
+              {t('nav.searchNotFound', { query })}
             </p>
           )}
         </nav>
@@ -360,14 +372,14 @@ export default function Sidebar({ open, onClose }) {
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
           >
             <KeyRound className="h-4.5 w-4.5 shrink-0" strokeWidth={1.75} />
-            Ganti Password
+            {t('nav.changePassword')}
           </button>
           <button
             onClick={logout}
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
           >
             <LogOut className="h-4.5 w-4.5 shrink-0" strokeWidth={1.75} />
-            Keluar
+            {t('nav.logout')}
           </button>
         </div>
 

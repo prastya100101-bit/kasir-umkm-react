@@ -10,6 +10,14 @@ import { fetchPublicSettings } from '../api/settings'
 const POLL_MS = 5000
 const SETTINGS_POLL_MS = 60_000 // sinkron ulang nama/logo toko & template pengumuman kalau admin ubah di Pengaturan
 
+// BARU (Audit #18, 28 Agustus 2026) — kalau device layar ini dibuka dengan
+// ?subCabangId=xxx di URL, template panggilan (prefix/suffix) memakai
+// override lokasi tsb kalau sudah diset admin (lihat Pengaturan > Template
+// Panggilan per Lokasi), fallback ke template global kalau belum ada.
+function getSubCabangIdFromUrl() {
+  return new URLSearchParams(window.location.search).get('subCabangId') || undefined
+}
+
 function speak(text) {
   if (!('speechSynthesis' in window)) return
   const utter = new SpeechSynthesisUtterance(text)
@@ -35,8 +43,9 @@ export default function PapanPanggilanPage() {
 
   useEffect(() => {
     let cancelled = false
+    const subCabangId = getSubCabangIdFromUrl()
     function loadSettings() {
-      fetchPublicSettings()
+      fetchPublicSettings(subCabangId)
         .then((data) => { if (!cancelled) setSettings(data) })
         .catch(() => {}) // gagal ambil pengaturan toko tidak boleh menghentikan papan panggilan
     }

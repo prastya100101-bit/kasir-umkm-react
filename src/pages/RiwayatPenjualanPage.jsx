@@ -4,8 +4,7 @@ import { Receipt } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
-import { fetchDashboardData } from '../api/dashboard'
-import { fetchSaleDetail, cancelSale, returSale, fetchReturBySale } from '../api/kasir'
+import { fetchSalesList, fetchSaleDetail, cancelSale, returSale, fetchReturBySale } from '../api/kasir'
 import { fetchCashAccounts } from '../api/purchasing'
 import { formatRupiah } from '../utils/format'
 import { downloadCsv } from '../utils/exportCsv'
@@ -14,20 +13,26 @@ import { downloadCsv } from '../utils/exportCsv'
 // Riwayat Penjualan — daftar transaksi kasir, bisa dicari & difilter,
 // dengan modal detail per transaksi (item, split pembayaran, kasbon).
 //
-// Sumber data SAMA dengan Dashboard (/api/dashboard/full-data?days=N),
-// karena backend belum punya endpoint list-transaksi khusus yang
-// paginated/filterable di server. Untuk skala UMKM 1-beberapa cabang ini
-// masih wajar (data di-fetch sekali per pilihan rentang hari, filter teks/
-// metode/status/lokasi/pagination dikerjakan di sisi client). Kalau nanti
-// volume transaksi sudah jauh lebih besar, pertimbangkan endpoint
-// GET /api/kasir/sales?from&to&search&page khusus di backend.
+// BARU (Temuan Audit #13, 28 Agustus 2026): sumber data sekarang
+// GET /api/kasir/sales?from&to&search&payMethod&status&page&pageSize —
+// filter & pagination dikerjakan DI DATABASE (LIMIT/OFFSET), bukan lagi
+// menarik seluruh window hari lewat /api/dashboard/full-data lalu
+// filter/paginate di browser. Payload per halaman sekarang selalu ~20
+// baris terlepas dari berapa lama rentang tanggal yang dipilih.
 //
-// Rentang tanggal CUSTOM (BARU, 27 Agustus 2026): dulu cuma preset 7/30/90/
-// 180 hari, tidak bisa pilih tanggal bebas. Sekarang ada opsi "Rentang
-// tanggal..." yang memunculkan 2 input tanggal — fetch tetap lewat
-// ?days=N yang sama (dihitung dari selisih hari ke tanggal "dari" + buffer),
-// tapi HASIL AKHIRNYA difilter lagi persis ke [dari 00:00, sampai 23:59:59]
-// di sisi client lewat `filtered` di bawah (lihat customRange).
+// Rentang tanggal (preset ATAU custom) dikirim langsung sebagai
+// ?from=YYYY-MM-DD&to=YYYY-MM-DD ke backend — tidak ada lagi filter
+// tanggal susulan di sisi client, backend yang menentukan baris mana yang
+// cocok.
+//
+// Ringkasan "X transaksi · Total Rp..." (totalOmzet/total) sekarang datang
+// dari agregat backend (dihitung dari SEMUA baris yang cocok filter, bukan
+// cuma halaman yang sedang tampil) — lihat saleService.listSalesPaginated().
+//
+// Export CSV (lihat handleExportCsv di bawah) memanggil ulang endpoint yang
+// sama dengan pageSize = total baris yang cocok filter saat itu (dibatasi
+// MAX_PAGE_SIZE=5000 di backend), supaya hasil export tetap "semua yang
+// cocok filter", bukan cuma satu halaman.
 // ============================================================
 
 const DAY_OPTIONS = [
@@ -67,15 +72,6 @@ function isoDaysAgo(n) {
   const d = new Date()
   d.setDate(d.getDate() - n)
   return d.toISOString().slice(0, 10)
-}
-
-// Jumlah hari dari tanggal `fromIso` sampai hari ini, dibulatkan ke atas +
-// buffer 1 hari — dipakai sebagai parameter ?days=N ke backend supaya window
-// data yang ditarik pasti mencakup seluruh rentang custom yang dipilih user.
-function daysSince(fromIso) {
-  const from = new Date(`${fromIso}T00:00:00`)
-  const diffMs = Date.now() - from.getTime()
-  return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)) + 1)
 }
 
 function formatWaktu(dateLike) {
@@ -472,29 +468,62 @@ export default function RiwayatPenjualanPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('') // nilai ketikan mentah (tiap keystroke)
+  const [search, setSearch] = useState('') // versi ter-debounce, dipakai buat fetch
   const [payMethodFilter, setPayMethodFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalOmzet, setTotalOmzet] = useState(0)
   const [detailSaleId, setDetailSaleId] = useState(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   const isCustomRange = days === 'custom'
-  // Window ?days=N yang dikirim ke backend: preset dipakai apa adanya,
-  // custom dihitung dari selisih hari ke tanggal "dari" (lihat daysSince).
-  const fetchDays = isCustomRange ? daysSince(customFrom) : days
+  // Rentang tanggal aktual yang dikirim ke backend sebagai ?from&to —
+  // preset dihitung mundur N hari dari hari ini, custom dipakai apa adanya.
+  const fromIso = isCustomRange ? customFrom : isoDaysAgo(days - 1)
+  const toIso = isCustomRange ? customTo : todayISO()
 
   useEffect(() => {
     document.title = 'Riwayat Penjualan — KASIR UMKM'
   }, [])
 
+  // Debounce pencarian teks 400ms — supaya tidak fetch ke server tiap
+  // ketukan huruf, cuma setelah user berhenti mengetik sejenak.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400)
+    return () => clearTimeout(t)
+  }, [searchInput])
+
+  // Reset ke halaman 1 tiap kali filter (selain page sendiri) berubah —
+  // supaya tidak nyangkut di halaman kosong kalau hasil filter baru lebih
+  // pendek dari sebelumnya.
+  useEffect(() => {
+    setPage(1)
+  }, [search, payMethodFilter, statusFilter, filterSubCabangIds, days, customFrom, customTo])
+
   const load = useCallback(() => {
     let cancelled = false
     setLoading(true)
     setError('')
-    fetchDashboardData({ days: fetchDays })
+    fetchSalesList({
+      from: fromIso,
+      to: toIso,
+      search,
+      payMethod: payMethodFilter,
+      status: statusFilter,
+      page,
+      pageSize: PAGE_SIZE,
+      subCabangIds: filterSubCabangIds,
+    })
       .then((data) => {
         if (cancelled) return
-        setSales(data.sales || [])
+        setSales(data.data || [])
+        setTotal(data.total || 0)
+        setTotalPages(data.totalPages || 1)
+        setTotalOmzet(Number(data.totalOmzet || 0))
       })
       .catch((err) => {
         if (cancelled) return
@@ -506,15 +535,9 @@ export default function RiwayatPenjualanPage() {
     return () => {
       cancelled = true
     }
-  }, [fetchDays])
+  }, [fromIso, toIso, search, payMethodFilter, statusFilter, page, filterSubCabangIds])
 
   useEffect(() => load(), [load])
-
-  // Reset ke halaman 1 tiap kali filter berubah — supaya tidak nyangkut di
-  // halaman kosong kalau hasil filter baru lebih pendek dari sebelumnya.
-  useEffect(() => {
-    setPage(1)
-  }, [search, payMethodFilter, statusFilter, filterSubCabangIds, days, customFrom, customTo])
 
   const locationName = useMemo(() => {
     const map = new Map(availableLocations.map((l) => [l.id, l.name]))
@@ -525,83 +548,73 @@ export default function RiwayatPenjualanPage() {
   const showLocationFilter = !isSingleLocationRole && availableLocations.filter((l) => l.type === 'SUBCABANG').length > 1
   const showLokasiColumn = !isSingleLocationRole
 
-  const filtered = useMemo(() => {
-    let rows = sales
-    if (isCustomRange) {
-      const fromMs = new Date(`${customFrom}T00:00:00`).getTime()
-      const toMs = new Date(`${customTo}T23:59:59.999`).getTime()
-      rows = rows.filter((s) => {
-        const t = new Date(s.date).getTime()
-        return t >= fromMs && t <= toMs
-      })
-    }
-    if (filterSubCabangIds && filterSubCabangIds.length > 0) {
-      rows = rows.filter((s) => filterSubCabangIds.includes(s.subCabangId))
-    }
-    if (payMethodFilter) rows = rows.filter((s) => s.payMethod === payMethodFilter)
-    if (statusFilter) rows = rows.filter((s) => s.status === statusFilter)
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      rows = rows.filter(
-        (s) => s.code.toLowerCase().includes(q) || (s.cashierName || '').toLowerCase().includes(q)
-      )
-    }
-    return rows
-  }, [sales, isCustomRange, customFrom, customTo, filterSubCabangIds, payMethodFilter, statusFilter, search])
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-
-  const totalOmzet = filtered
-    .filter((s) => s.status === 'completed')
-    .reduce((sum, s) => sum + Number(s.total), 0)
+  const pageRows = sales // baris untuk halaman sekarang sudah datang ter-paginate dari backend
 
   // Export CSV mengikuti SEMUA filter yang aktif saat ini (lokasi, metode,
-  // status, pencarian, rentang tanggal) — bukan cuma halaman yang lagi
-  // ditampilkan, supaya hasil export = apa yang user lihat di ringkasan
-  // "X transaksi · Total Rp...".
-  function handleExportCsv() {
-    downloadCsv(
-      `riwayat-penjualan_${todayISO()}`,
-      filtered,
-      [
-        { key: 'date', label: 'Waktu', value: (s) => formatWaktu(s.date) },
-        { key: 'code', label: 'Kode Transaksi' },
-        { key: 'cashierName', label: 'Kasir' },
-        ...(showLokasiColumn ? [{ key: 'subCabangId', label: 'Lokasi', value: (s) => locationName(s.subCabangId) }] : []),
-        { key: 'payMethod', label: 'Metode Bayar', value: (s) => PAY_METHOD_LABEL[s.payMethod] || s.payMethod },
-        { key: 'subtotal', label: 'Subtotal (Rp)', value: (s) => Number(s.subtotal || 0) },
-        { key: 'discount', label: 'Diskon (Rp)', value: (s) => Number(s.discount || 0) },
-        { key: 'total', label: 'Total (Rp)', value: (s) => Number(s.total || 0) },
-        { key: 'status', label: 'Status', value: (s) => (s.status === 'completed' ? 'Selesai' : s.status === 'batal' ? 'Dibatalkan' : s.status) },
-      ]
-    )
+  // status, pencarian, rentang tanggal) — dipanggil ulang ke backend dengan
+  // pageSize = jumlah total baris yang cocok (dibatasi MAX_PAGE_SIZE=5000 di
+  // server), supaya hasil export = SEMUA yang cocok, bukan cuma 1 halaman.
+  async function handleExportCsv() {
+    setExportError('')
+    setExporting(true)
+    try {
+      const data = await fetchSalesList({
+        from: fromIso,
+        to: toIso,
+        search,
+        payMethod: payMethodFilter,
+        status: statusFilter,
+        page: 1,
+        pageSize: Math.max(1, Math.min(total, 5000)),
+        subCabangIds: filterSubCabangIds,
+      })
+      downloadCsv(
+        `riwayat-penjualan_${todayISO()}`,
+        data.data || [],
+        [
+          { key: 'date', label: 'Waktu', value: (s) => formatWaktu(s.date) },
+          { key: 'code', label: 'Kode Transaksi' },
+          { key: 'cashierName', label: 'Kasir' },
+          ...(showLokasiColumn ? [{ key: 'subCabangId', label: 'Lokasi', value: (s) => locationName(s.subCabangId) }] : []),
+          { key: 'payMethod', label: 'Metode Bayar', value: (s) => PAY_METHOD_LABEL[s.payMethod] || s.payMethod },
+          { key: 'subtotal', label: 'Subtotal (Rp)', value: (s) => Number(s.subtotal || 0) },
+          { key: 'discount', label: 'Diskon (Rp)', value: (s) => Number(s.discount || 0) },
+          { key: 'total', label: 'Total (Rp)', value: (s) => Number(s.total || 0) },
+          { key: 'status', label: 'Status', value: (s) => (s.status === 'completed' ? 'Selesai' : s.status === 'batal' ? 'Dibatalkan' : s.status) },
+        ]
+      )
+    } catch (err) {
+      setExportError(errMsg(err, 'Gagal export CSV'))
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
     <AppLayout title="Riwayat Penjualan" icon={Receipt}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--color-ink-soft)]">
-          {filtered.length} transaksi · Total {formatRupiah(totalOmzet)}
+          {total} transaksi · Total {formatRupiah(totalOmzet)}
         </p>
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportCsv}
-            disabled={filtered.length === 0}
+            disabled={total === 0 || exporting}
             className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)] disabled:opacity-40"
           >
-            ⬇ Export CSV
+            {exporting ? 'Menyiapkan...' : '⬇ Export CSV'}
           </button>
           {showLocationFilter && <LocationFilterTree />}
         </div>
       </div>
+      {exportError && <p className="mt-2 text-xs text-[var(--color-danger)]">{exportError}</p>}
 
       <div className="card-elevated mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="flex flex-wrap items-center gap-3">
           <input
             type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Cari kode transaksi atau nama kasir..."
             className="min-w-[220px] flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-2 text-sm"
           />

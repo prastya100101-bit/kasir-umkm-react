@@ -68,6 +68,36 @@ export async function checkoutSale(payload) {
   return data
 }
 
+// GET /api/kasir/sales — daftar transaksi PAGINATED di server (Temuan Audit
+// #13, 28 Agustus 2026). Pengganti pola lama fetchDashboardData({days})
+// + filter di browser (masih dipakai halaman lain yang butuh full-data
+// gabungan banyak modul, tapi RiwayatPenjualanPage.jsx sekarang pakai ini).
+// subCabangIds: array id, dikirim sebagai "id1,id2" (pola sama dashboard).
+export async function fetchSalesList({
+  from,
+  to,
+  search,
+  payMethod,
+  status,
+  page = 1,
+  pageSize = 20,
+  subCabangIds,
+} = {}) {
+  const { data } = await apiClient.get('/api/kasir/sales', {
+    params: {
+      from,
+      to,
+      search: search || undefined,
+      payMethod: payMethod || undefined,
+      status: status || undefined,
+      page,
+      pageSize,
+      subCabangIds: subCabangIds && subCabangIds.length ? subCabangIds.join(',') : undefined,
+    },
+  })
+  return data
+}
+
 export async function fetchSaleDetail(id) {
   const { data } = await apiClient.get(`/api/kasir/sales/${id}`)
   return data

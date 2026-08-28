@@ -29,6 +29,16 @@ import apiClient from './client'
 //                                 cepat "Uang Diterima" — dulu hardcoded
 //                                 QUICK_CASH, sekarang bisa disetel per toko
 //                                 (Audit #9, 27 Agustus 2026).
+//   - assetCategories         -> disediakan via GET /public (array
+//                                 {id, label}), dipakai AsetTetapPage.jsx
+//                                 untuk pilihan Kategori — dulu hardcoded
+//                                 CATEGORY_OPTIONS, sekarang bisa
+//                                 ditambah/diubah/dihapus Super Admin lewat
+//                                 Pengaturan (Audit #8, 27-28 Agustus 2026).
+//                                 Kategori 'tanah' TIDAK ada di sini —
+//                                 dikunci di kode (lihat AsetTetapPage.jsx)
+//                                 karena logika penyusutan backend bergantung
+//                                 pada id string itu persis.
 //   - modalAwalUsaha          -> TIDAK dibaca di mana pun di backend saat
 //                                 ini (Cash Flow Forecast pakai saldoAwal
 //                                 dari CashAccount, bukan dari Settings).
@@ -61,7 +71,28 @@ export async function saveSettings(partialSettings) {
 // Response: { storeName, storeLogo, announcementTemplate: {prefix, suffix},
 // quickCashAmounts: number[] } — backend selalu balikin default kalau admin
 // belum pernah mengatur, jadi field ini TIDAK PERNAH undefined/null.
-export async function fetchPublicSettings() {
-  const { data } = await apiClient.get('/api/settings/public')
+export async function fetchPublicSettings(subCabangId) {
+  const { data } = await apiClient.get('/api/settings/public', {
+    params: subCabangId ? { subCabangId } : undefined,
+  })
+  return data
+}
+
+// BARU (Audit #18, 28 Agustus 2026) — Template Panggilan per lokasi.
+// Menyimpan override cukup lewat saveSettings({ [`announcementTemplate:${subCabangId}`]: {prefix, suffix} })
+// — endpoint PUT /api/settings generic key-value sudah menerima key apapun,
+// tidak perlu endpoint simpan terpisah.
+
+// GET /api/settings/announcement-templates — Super Admin only. Peta
+// { [subCabangId]: {prefix, suffix} } untuk semua override yang sudah diset.
+export async function fetchAnnouncementTemplateOverrides() {
+  const { data } = await apiClient.get('/api/settings/announcement-templates')
+  return data.overrides
+}
+
+// DELETE /api/settings/announcement-template/:subCabangId — Super Admin
+// only. Hapus override 1 lokasi, lokasi itu kembali pakai template global.
+export async function deleteAnnouncementTemplateOverride(subCabangId) {
+  const { data } = await apiClient.delete(`/api/settings/announcement-template/${subCabangId}`)
   return data
 }

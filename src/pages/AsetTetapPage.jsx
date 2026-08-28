@@ -3,6 +3,7 @@ import AppLayout from '../components/layout/AppLayout'
 import { Building2 } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import { fetchCashAccounts } from '../api/purchasing'
+import { fetchPublicSettings } from '../api/settings'
 import {
   fetchAssets,
   fetchAsset,
@@ -52,8 +53,19 @@ function toDateInputValue(dateLike) {
   return d.toISOString().slice(0, 10)
 }
 
-const CATEGORY_OPTIONS = [
-  { id: 'tanah', label: 'Tanah' },
+// BARU (Audit #8, 27-28 Agustus 2026): dulu daftar tetap di sini
+// (CATEGORY_OPTIONS hardcoded). Sekarang cuma dipakai sebagai FALLBACK
+// (dipakai saat /api/settings/public belum sempat dimuat, dan sebagai
+// default kalau Super Admin belum pernah mengatur assetCategories) —
+// daftar yang benar-benar ditampilkan di form datang dari
+// useAssetCategories() di bawah. 'tanah' TETAP dikunci di sini (bukan
+// bagian dari pengaturan yang bisa diubah) karena computeMonthlyDepreciation
+// di assetController.js men-cek literal string 'tanah' untuk tahu aset mana
+// yang tidak disusutkan — mengganti/menghapus id ini lewat Pengaturan akan
+// diam-diam merusak logika penyusutan tanpa error yang jelas.
+const TANAH_CATEGORY = { id: 'tanah', label: 'Tanah' }
+const FALLBACK_CATEGORY_OPTIONS = [
+  TANAH_CATEGORY,
   { id: 'bangunan', label: 'Bangunan' },
   { id: 'kendaraan', label: 'Kendaraan' },
   { id: 'peralatan', label: 'Peralatan' },
@@ -62,6 +74,35 @@ const CATEGORY_OPTIONS = [
   { id: 'perabotan', label: 'Perabotan' },
   { id: 'lainnya', label: 'Lainnya' },
 ]
+
+// Dipakai di komponen halaman utama & modal form — mengambil kategori dari
+// GET /api/settings/public (field assetCategories, sudah termasuk default
+// server-side kalau belum pernah diatur — lihat DEFAULT_ASSET_CATEGORIES di
+// settingsController.js), lalu menambahkan 'tanah' di depan. Kalau fetch
+// gagal/belum selesai, fallback ke FALLBACK_CATEGORY_OPTIONS supaya form
+// tetap bisa dipakai.
+function useAssetCategories() {
+  const [categories, setCategories] = useState(FALLBACK_CATEGORY_OPTIONS)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchPublicSettings()
+      .then((data) => {
+        if (cancelled) return
+        const custom = Array.isArray(data.assetCategories) ? data.assetCategories : []
+        setCategories([TANAH_CATEGORY, ...custom])
+      })
+      .catch(() => {
+        // Diamkan — FALLBACK_CATEGORY_OPTIONS (state awal) sudah cukup
+        // supaya halaman tetap bisa dipakai kalau /public gagal dimuat.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return categories
+}
 
 const STATUS_LABEL = { aktif: 'Aktif', dilepas: 'Dilepas' }
 const STATUS_TONE = {
@@ -85,6 +126,7 @@ const JENIS_PELEPASAN_OPTIONS = [
 // FORM: Tambah Aset (Super Admin saja — backend requireRole('Super Admin'))
 // ============================================================
 function TambahAsetForm({ onCreated }) {
+  const categories = useAssetCategories()
   const [name, setName] = useState('')
   const [category, setCategory] = useState('peralatan')
   const [tanggalPerolehan, setTanggalPerolehan] = useState(toDateInputValue(new Date()))
@@ -182,7 +224,7 @@ function TambahAsetForm({ onCreated }) {
 
         <Field label="Kategori">
           <select className={inputClass} value={category} onChange={(e) => setCategory(e.target.value)}>
-            {CATEGORY_OPTIONS.map((c) => (
+            {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
               </option>
@@ -491,6 +533,7 @@ function LepasAsetModal({ asset, onClose, onDisposed }) {
 // MODAL: Detail Aset (info + riwayat penyusutan)
 // ============================================================
 function DetailAsetModal({ assetId, onClose, canManage, onChanged }) {
+  const categories = useAssetCategories()
   const [asset, setAsset] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -555,7 +598,7 @@ function DetailAsetModal({ assetId, onClose, canManage, onChanged }) {
             <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
               <div>
                 <p className="text-xs text-[var(--color-ink-soft)]">Kategori</p>
-                <p>{CATEGORY_OPTIONS.find((c) => c.id === asset.category)?.label || asset.category || '—'}</p>
+                <p>{categories.find((c) => c.id === asset.category)?.label || asset.category || '—'}</p>
               </div>
               <div>
                 <p className="text-xs text-[var(--color-ink-soft)]">Lokasi</p>
@@ -684,6 +727,7 @@ function DetailAsetModal({ assetId, onClose, canManage, onChanged }) {
 // TABEL: Daftar Aset
 // ============================================================
 function DaftarAset({ canManage, refreshKey, onOpenDetail }) {
+  const categories = useAssetCategories()
   const [statusFilter, setStatusFilter] = useState('aktif')
   const [assets, setAssets] = useState([])
   const [loading, setLoading] = useState(true)
@@ -762,7 +806,7 @@ function DaftarAset({ canManage, refreshKey, onOpenDetail }) {
                 >
                   <td className="py-2 pr-4">{a.code}</td>
                   <td className="py-2 pr-4">{a.name}</td>
-                  <td className="py-2 pr-4">{CATEGORY_OPTIONS.find((c) => c.id === a.category)?.label || a.category || '—'}</td>
+                  <td className="py-2 pr-4">{categories.find((c) => c.id === a.category)?.label || a.category || '—'}</td>
                   <td className="py-2 pr-4">{formatRupiah(a.hargaPerolehan)}</td>
                   <td className="py-2 pr-4">{formatRupiah(a.nilaiBuku)}</td>
                   <td className={`py-2 pr-4 font-medium ${STATUS_TONE[a.status] || ''}`}>

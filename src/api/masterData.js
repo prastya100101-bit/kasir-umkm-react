@@ -85,6 +85,15 @@ export async function deactivateProduct(id) {
   return data
 }
 
+// Aksi massal (nonaktifkan/aktifkan/ubah kategori/ubah harga %) — temuan
+// #15, controllers/productController.js bulkUpdate, Super Admin saja.
+// action: 'deactivate' | 'activate' | 'category' | 'price'
+// opts: { categoryId } untuk 'category', { priceField, percent } untuk 'price'
+export async function bulkUpdateProducts(ids, action, opts = {}) {
+  const { data } = await apiClient.post('/api/produk/bulk', { ids, action, ...opts })
+  return data
+}
+
 // Impor massal — controllers/productController.js importProducts, Super
 // Admin saja di backend (requireRole di productRoutes.js).
 //

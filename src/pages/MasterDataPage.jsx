@@ -17,6 +17,7 @@ import {
   createProduct,
   updateProduct,
   deactivateProduct,
+  bulkUpdateProducts,
   fetchRawMaterials,
   createRawMaterial,
   updateRawMaterial,
@@ -1863,6 +1864,13 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
   const [allProducts, setAllProducts] = useState([])
   const [busy, setBusy] = useState(false)
   const [importModal, setImportModal] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkAction, setBulkAction] = useState('deactivate')
+  const [bulkCategoryId, setBulkCategoryId] = useState('')
+  const [bulkPriceField, setBulkPriceField] = useState('sellPrice')
+  const [bulkPercent, setBulkPercent] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkResult, setBulkResult] = useState(null)
 
   // Daftar semua produk aktif (tanpa paginasi) khusus untuk dropdown
   // komponen di Modal Bundle — beda dari `products` yang dipaginasi untuk
@@ -1890,6 +1898,64 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
   useEffect(() => {
     load()
   }, [load])
+
+  // Selection dibersihkan tiap kali filter/halaman berubah, supaya tidak ada
+  // id "tertinggal" tersembunyi dari daftar produk yang sedang tampil.
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [search, categoryId, active, page])
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAllOnPage() {
+    setSelectedIds((prev) => {
+      const allSelected = products.length > 0 && products.every((p) => prev.has(p.id))
+      if (allSelected) return new Set()
+      return new Set(products.map((p) => p.id))
+    })
+  }
+
+  async function handleBulkApply() {
+    if (selectedIds.size === 0) return
+    if (bulkAction === 'price' && (bulkPercent === '' || Number.isNaN(Number(bulkPercent)))) {
+      setError('Isi persentase perubahan harga terlebih dahulu.')
+      return
+    }
+    const actionLabel = {
+      deactivate: 'menonaktifkan',
+      activate: 'mengaktifkan',
+      category: 'mengubah kategori',
+      price: 'mengubah harga',
+    }[bulkAction]
+    if (!window.confirm(`Yakin ${actionLabel} ${selectedIds.size} produk terpilih?`)) return
+
+    setBulkBusy(true)
+    setError(null)
+    setBulkResult(null)
+    try {
+      const opts =
+        bulkAction === 'category'
+          ? { categoryId: bulkCategoryId || null }
+          : bulkAction === 'price'
+          ? { priceField: bulkPriceField, percent: Number(bulkPercent) }
+          : {}
+      const res = await bulkUpdateProducts(Array.from(selectedIds), bulkAction, opts)
+      setBulkResult(res)
+      setSelectedIds(new Set())
+      load()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menjalankan aksi massal.'))
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   async function handleSubmit(payload) {
     setBusy(true)
@@ -1974,6 +2040,75 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
           </button>
         )}
       </div>
+      {canWrite && selectedIds.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-brand)] bg-[var(--color-canvas)] px-4 py-3 text-sm">
+          <span className="font-medium text-[var(--color-ink)]">{selectedIds.size} produk dipilih</span>
+          <select
+            className={inputClass + ' max-w-[10rem]'}
+            value={bulkAction}
+            onChange={(e) => setBulkAction(e.target.value)}
+          >
+            <option value="deactivate">Nonaktifkan</option>
+            <option value="activate">Aktifkan</option>
+            <option value="category">Ubah kategori</option>
+            <option value="price">Ubah harga (%)</option>
+          </select>
+          {bulkAction === 'category' && (
+            <select
+              className={inputClass + ' max-w-[10rem]'}
+              value={bulkCategoryId}
+              onChange={(e) => setBulkCategoryId(e.target.value)}
+            >
+              <option value="">Tanpa kategori</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {bulkAction === 'price' && (
+            <>
+              <select
+                className={inputClass + ' max-w-[9rem]'}
+                value={bulkPriceField}
+                onChange={(e) => setBulkPriceField(e.target.value)}
+              >
+                <option value="sellPrice">Harga Jual</option>
+                <option value="costPrice">Harga Beli</option>
+              </select>
+              <input
+                type="number"
+                step="0.1"
+                className={inputClass + ' max-w-[7rem]'}
+                placeholder="mis. 10 atau -5"
+                value={bulkPercent}
+                onChange={(e) => setBulkPercent(e.target.value)}
+              />
+              <span className="text-[var(--color-ink-soft)]">%</span>
+            </>
+          )}
+          <button
+            onClick={handleBulkApply}
+            disabled={bulkBusy}
+            className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {bulkBusy ? 'Memproses...' : 'Terapkan'}
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-[var(--color-ink-soft)] hover:underline"
+          >
+            Batal
+          </button>
+        </div>
+      )}
+      {bulkResult && (
+        <p className="mb-3 text-sm text-[var(--color-ink-soft)]">
+          {bulkResult.updated} produk berhasil diperbarui.
+          {bulkResult.failed?.length > 0 && ` ${bulkResult.failed.length} gagal.`}
+        </p>
+      )}
       <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] card-elevated">
         {loading ? (
           <p className="p-5 text-sm text-[var(--color-ink-soft)]">Memuat...</p>
@@ -1983,6 +2118,15 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] text-[var(--color-ink-soft)]">
+                {canWrite && (
+                  <th className="w-10 px-5 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={products.length > 0 && products.every((p) => selectedIds.has(p.id))}
+                      onChange={toggleSelectAllOnPage}
+                    />
+                  </th>
+                )}
                 <th className="px-5 py-2.5 font-medium">Produk</th>
                 <th className="px-5 py-2.5 font-medium">Kategori</th>
                 <th className="px-5 py-2.5 font-medium text-right">Harga Jual</th>
@@ -1995,6 +2139,11 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
             <tbody>
               {products.map((p) => (
                 <tr key={p.id} className="border-b border-[var(--color-border)] last:border-0">
+                  {canWrite && (
+                    <td className="px-5 py-3">
+                      <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)} />
+                    </td>
+                  )}
                   <td className="px-5 py-3">
                     <div className="font-medium text-[var(--color-ink)]">{p.name}</div>
                     <div className="text-xs text-[var(--color-ink-soft)]">{p.sku || p.barcode || '—'}</div>

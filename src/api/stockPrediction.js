@@ -54,3 +54,26 @@ export async function updateStockPredictionConfig(payload) {
   const { data } = await apiClient.patch('/api/stok/prediksi/config', payload)
   return data
 }
+
+// #14 (Audit 27-28 Agustus 2026) — override asumsi per kategori produk.
+
+// GET /api/stok/prediksi/config/kategori -> { overrides: { [categoryId]: {leadTimeDays?, safetyDays?, targetDays?} } }
+export async function fetchCategoryOverrides() {
+  const { data } = await apiClient.get('/api/stok/prediksi/config/kategori')
+  return data.overrides
+}
+
+// PUT /api/stok/prediksi/config/kategori/:categoryId — Super Admin only.
+// body: { leadTimeDays?, safetyDays?, targetDays? } (angka, atau null/''
+// untuk hapus override field itu saja - kembali ke global)
+export async function setCategoryOverride(categoryId, payload) {
+  const { data } = await apiClient.put(`/api/stok/prediksi/config/kategori/${categoryId}`, payload)
+  return data
+}
+
+// DELETE /api/stok/prediksi/config/kategori/:categoryId — Super Admin
+// only. Hapus SELURUH override kategori ini.
+export async function deleteCategoryOverride(categoryId) {
+  const { data } = await apiClient.delete(`/api/stok/prediksi/config/kategori/${categoryId}`)
+  return data
+}

@@ -9,7 +9,11 @@ import {
   fetchStockPrediction,
   fetchStockPredictionConfig,
   updateStockPredictionConfig,
+  fetchCategoryOverrides,
+  setCategoryOverride,
+  deleteCategoryOverride,
 } from '../api/stockPrediction'
+import { fetchCategories } from '../api/masterData'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -142,6 +146,137 @@ function ConfigModal({ config, onClose, onSave }) {
   )
 }
 
+// #14 (Audit 27-28 Agustus 2026) — override asumsi per kategori produk.
+// Field kosong = "ikut global" (dikirim sebagai null saat simpan supaya
+// backend menghapus override field itu, bukan menimpanya jadi 0).
+function CategoryOverrideModal({ categories, overrides, globalConfig, onClose, onSave, onDelete }) {
+  const [categoryId, setCategoryId] = useState(categories[0]?.id || '')
+  const [form, setForm] = useState({ leadTimeDays: '', safetyDays: '', targetDays: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const existing = overrides[categoryId] || {}
+    setForm({
+      leadTimeDays: existing.leadTimeDays ?? '',
+      safetyDays: existing.safetyDays ?? '',
+      targetDays: existing.targetDays ?? '',
+    })
+  }, [categoryId, overrides])
+
+  const fields = [
+    { key: 'leadTimeDays', label: 'Lead Time Pemesanan (hari)' },
+    { key: 'safetyDays', label: 'Safety Stock (hari)' },
+    { key: 'targetDays', label: 'Target Stok (hari)' },
+  ]
+
+  const handleSave = async () => {
+    if (!categoryId) return
+    setSaving(true)
+    setError('')
+    try {
+      await onSave(categoryId, {
+        leadTimeDays: form.leadTimeDays === '' ? null : form.leadTimeDays,
+        safetyDays: form.safetyDays === '' ? null : form.safetyDays,
+        targetDays: form.targetDays === '' ? null : form.targetDays,
+      })
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan override kategori'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!categoryId) return
+    setSaving(true)
+    setError('')
+    try {
+      await onDelete(categoryId)
+      setForm({ leadTimeDays: '', safetyDays: '', targetDays: '' })
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menghapus override kategori'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const hasOverride = !!overrides[categoryId]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-lg bg-[var(--color-surface)] p-5 shadow-xl">
+        <h3 className="mb-1 font-[family-name:var(--font-display)] text-lg font-semibold">
+          Override Asumsi per Kategori
+        </h3>
+        <p className="mb-4 text-sm text-[var(--color-ink-soft)]">
+          Opsional — untuk kategori produk yang butuh asumsi beda dari global (mis. produk cepat basi
+          butuh lead time lebih pendek). Kosongkan field untuk ikut asumsi global. Hanya berlaku untuk
+          Produk Jadi — Bahan Baku selalu memakai asumsi global.
+        </p>
+        {error && (
+          <div className="mb-3 rounded-md bg-[var(--color-danger-tint)] px-3 py-2 text-sm text-[var(--color-danger)]">
+            {error}
+          </div>
+        )}
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 block font-medium text-[var(--color-ink)]">Kategori</span>
+          <select className={inputClass} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{overrides[c.id] ? ' (sudah punya override)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="space-y-3">
+          {fields.map((f) => (
+            <label key={f.key} className="block text-sm">
+              <span className="mb-1 block font-medium text-[var(--color-ink)]">{f.label}</span>
+              <input
+                type="number"
+                min="0"
+                className={inputClass}
+                placeholder={`Ikut global (${globalConfig[f.key]})`}
+                value={form[f.key]}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
+              />
+            </label>
+          ))}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          {hasOverride && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="mr-auto rounded-md border border-[var(--color-danger)] px-4 py-2 text-sm text-[var(--color-danger)] disabled:opacity-60"
+              disabled={saving}
+            >
+              Hapus Override
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm"
+            disabled={saving}
+          >
+            Tutup
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm text-white disabled:opacity-60"
+            disabled={saving || !categoryId}
+          >
+            {saving ? 'Menyimpan...' : 'Simpan'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function StockPredictionPage() {
   const { isSuperAdmin } = useAuth()
   const { availableLocations, activeLocation } = useLocationStore()
@@ -158,6 +293,10 @@ export default function StockPredictionPage() {
 
   const [config, setConfig] = useState(null)
   const [showConfig, setShowConfig] = useState(false)
+
+  const [categories, setCategories] = useState([])
+  const [categoryOverrides, setCategoryOverridesState] = useState({})
+  const [showCategoryOverrides, setShowCategoryOverrides] = useState(false)
 
   const subLocations = useMemo(
     () => availableLocations.filter((l) => l.type === 'SUBCABANG'),
@@ -193,6 +332,38 @@ export default function StockPredictionPage() {
 
   const handleSaveConfig = async (updates) => {
     await updateStockPredictionConfig(updates)
+    await load()
+  }
+
+  const openCategoryOverrides = async () => {
+    try {
+      const [cats, overrides, cfg] = await Promise.all([
+        categories.length ? categories : fetchCategories(),
+        fetchCategoryOverrides(),
+        config || fetchStockPredictionConfig(),
+      ])
+      setCategories(cats)
+      setCategoryOverridesState(overrides || {})
+      setConfig(cfg)
+      setShowCategoryOverrides(true)
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memuat override kategori'))
+    }
+  }
+
+  const handleSaveCategoryOverride = async (categoryId, updates) => {
+    const result = await setCategoryOverride(categoryId, updates)
+    setCategoryOverridesState((prev) => ({ ...prev, [categoryId]: result.override }))
+    await load()
+  }
+
+  const handleDeleteCategoryOverride = async (categoryId) => {
+    await deleteCategoryOverride(categoryId)
+    setCategoryOverridesState((prev) => {
+      const next = { ...prev }
+      delete next[categoryId]
+      return next
+    })
     await load()
   }
 
@@ -260,6 +431,15 @@ export default function StockPredictionPage() {
               className="ml-auto rounded-md border border-[var(--color-border)] px-4 py-2 text-sm"
             >
               Atur Asumsi
+            </button>
+          )}
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={openCategoryOverrides}
+              className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm"
+            >
+              Override per Kategori
             </button>
           )}
         </div>
@@ -361,7 +541,14 @@ export default function StockPredictionPage() {
               {filteredRows.map((r) => (
                 <tr key={`${r.itemType}-${r.itemId}`} className="border-t border-[var(--color-border)]">
                   <td className="px-3 py-2">
-                    <p className="font-medium">{r.name}</p>
+                    <p className="font-medium">
+                      {r.name}
+                      {r.usingOverride && (
+                        <span className="ml-2 inline-block rounded-full border border-[var(--color-brand)]/40 bg-[var(--color-brand)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--color-brand)]">
+                          Override
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-[var(--color-ink-soft)]">
                       {r.itemType === 'produk' ? 'Produk Jadi' : 'Bahan Baku'}
                     </p>
@@ -401,6 +588,17 @@ export default function StockPredictionPage() {
 
       {showConfig && config && (
         <ConfigModal config={config} onClose={() => setShowConfig(false)} onSave={handleSaveConfig} />
+      )}
+
+      {showCategoryOverrides && config && categories.length > 0 && (
+        <CategoryOverrideModal
+          categories={categories}
+          overrides={categoryOverrides}
+          globalConfig={config}
+          onClose={() => setShowCategoryOverrides(false)}
+          onSave={handleSaveCategoryOverride}
+          onDelete={handleDeleteCategoryOverride}
+        />
       )}
     </AppLayout>
   )

@@ -1,7 +1,11 @@
 import { Menu } from 'lucide-react'
 import LocationSwitcher from './LocationSwitcher'
+import ThemeToggle from './ThemeToggle'
+import LanguageToggle from './LanguageToggle'
+import { useTranslation } from '../../i18n/I18nContext'
 
 export default function TopBar({ title, icon: Icon, onMenuClick }) {
+  const { t } = useTranslation()
   return (
     <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4 md:px-6">
       <div className="flex min-w-0 items-center gap-2">
@@ -12,7 +16,7 @@ export default function TopBar({ title, icon: Icon, onMenuClick }) {
           type="button"
           onClick={onMenuClick}
           className="shrink-0 rounded-lg p-2 text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)] md:hidden"
-          aria-label="Buka menu"
+          aria-label={t('nav.openMenu')}
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -31,7 +35,11 @@ export default function TopBar({ title, icon: Icon, onMenuClick }) {
           {title}
         </h1>
       </div>
-      <LocationSwitcher />
+      <div className="flex shrink-0 items-center gap-1">
+        <LanguageToggle />
+        <ThemeToggle />
+        <LocationSwitcher />
+      </div>
     </header>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { Banknote } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import PayslipPrintModal from '../components/PayslipPrintModal'
 import { fetchCashAccounts } from '../api/purchasing'
 import {
   fetchKaryawanUntukPayroll,
@@ -225,6 +226,7 @@ function PayrollRow({ payroll, canGenerate, canApprove, cashAccounts, onChanged 
   const [showEdit, setShowEdit] = useState(false)
   const [showReject, setShowReject] = useState(null) // 'verify' | 'approve' | null
   const [cashAccountId, setCashAccountId] = useState('')
+  const [showSlip, setShowSlip] = useState(false)
 
   async function act(fn, ...args) {
     setIsActing(true)
@@ -267,6 +269,12 @@ function PayrollRow({ payroll, canGenerate, canApprove, cashAccounts, onChanged 
       </td>
       <td className="px-5 py-3 text-right">
         <div className="flex flex-wrap justify-end gap-2">
+          <button
+            onClick={() => setShowSlip(true)}
+            className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
+          >
+            🖨️ Cetak Slip
+          </button>
           {canEdit && (
             <button
               onClick={() => setShowEdit((v) => !v)}
@@ -369,6 +377,7 @@ function PayrollRow({ payroll, canGenerate, canApprove, cashAccounts, onChanged 
             Dibayar {new Date(payroll.tanggalBayar).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
           </p>
         )}
+        {showSlip && <PayslipPrintModal payroll={payroll} onClose={() => setShowSlip(false)} />}
       </td>
     </tr>
   )

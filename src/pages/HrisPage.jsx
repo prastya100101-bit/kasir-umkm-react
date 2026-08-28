@@ -342,6 +342,7 @@ function RekapTimTab() {
   const [rekap, setRekap] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [search, setSearch] = useState('')
 
   async function load(p) {
     setLoading(true)
@@ -378,6 +379,14 @@ function RekapTimTab() {
         >
           Tampilkan
         </button>
+        <Field label="Cari Karyawan">
+          <input
+            className={inputClass}
+            placeholder="Cari nama karyawan..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </Field>
       </div>
 
       {error && <p className="mb-3 text-sm text-[var(--color-danger)]">{error}</p>}
@@ -398,7 +407,9 @@ function RekapTimTab() {
               </tr>
             </thead>
             <tbody>
-              {rekap.map((r) => (
+              {rekap
+                .filter((r) => !search.trim() || (r.userName || '').toLowerCase().includes(search.trim().toLowerCase()))
+                .map((r) => (
                 <tr key={r.userId} className="border-b border-[var(--color-border)] last:border-0">
                   <td className="py-2 pr-4">{r.userName}</td>
                   <td className="py-2 pr-4">{r.totalHadir}</td>
@@ -517,6 +528,7 @@ function AbsensikanKaryawanTab() {
   const [error, setError] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [rowResults, setRowResults] = useState({})
+  const [search, setSearch] = useState('')
 
   async function load() {
     setLoading(true)
@@ -577,6 +589,14 @@ function AbsensikanKaryawanTab() {
         Khusus Super Admin — dipakai kalau karyawan lupa absen sendiri lewat perangkatnya. Riwayat otomatis
         ditandai "(diabsenkan oleh ...)" supaya tetap jelas ini bukan absen mandiri.
       </p>
+      <Field label="Cari Karyawan">
+        <input
+          className={inputClass}
+          placeholder="Cari nama karyawan..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </Field>
       {error && <p className="mb-3 text-sm text-[var(--color-danger)]">{error}</p>}
       {loading ? (
         <p className="text-sm text-[var(--color-ink-soft)]">Memuat...</p>
@@ -593,7 +613,9 @@ function AbsensikanKaryawanTab() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
+              {users
+                .filter((u) => !search.trim() || (u.name || u.username || '').toLowerCase().includes(search.trim().toLowerCase()))
+                .map((u) => (
                 <tr key={u.id} className="border-b border-[var(--color-border)] last:border-0 align-top">
                   <td className="py-2 pr-4 font-medium">{u.name || u.username}</td>
                   <td className="py-2 pr-4 text-[var(--color-ink-soft)]">{u.role?.name || '—'}</td>

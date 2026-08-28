@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTranslation } from '../i18n/I18nContext'
+import ThemeToggle from '../components/layout/ThemeToggle'
+import LanguageToggle from '../components/layout/LanguageToggle'
 
 export default function LoginPage() {
   const { login, isAuthenticated, error } = useAuth()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -33,14 +37,11 @@ export default function LoginPage() {
         </p>
         <div>
           <p className="font-[family-name:var(--font-display)] text-4xl font-semibold leading-tight">
-            Satu dashboard,
+            {t('login.tagline1')}
             <br />
-            semua lokasi toko.
+            {t('login.tagline2')}
           </p>
-          <p className="mt-4 max-w-sm text-white/70">
-            Kelola kasir, margin, dan rekonsiliasi kas di setiap cabang & subcabang
-            dari satu tempat.
-          </p>
+          <p className="mt-4 max-w-sm text-white/70">{t('login.description')}</p>
         </div>
         <div className="receipt-divider pt-4 text-xs text-white/40" style={{ borderColor: 'rgba(255,255,255,0.2)' }}>
           © {new Date().getFullYear()} KASIR UMKM
@@ -48,17 +49,23 @@ export default function LoginPage() {
       </div>
 
       {/* Panel kanan — form */}
-      <div className="flex w-full flex-col items-center justify-center bg-[var(--color-canvas)] p-8 md:w-1/2">
+      <div className="relative flex w-full flex-col items-center justify-center bg-[var(--color-canvas)] p-8 md:w-1/2">
+        {/* Toggle tema & bahasa juga tersedia di sini (sebelum login),
+            bukan cuma di TopBar setelah login — pengguna bisa atur
+            preferensi tampilan dari layar paling pertama. */}
+        <div className="absolute right-4 top-4 flex items-center gap-1">
+          <LanguageToggle />
+          <ThemeToggle />
+        </div>
+
         <form
           onSubmit={handleSubmit}
           className="card-elevated w-full max-w-sm rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8"
         >
           <h2 className="font-[family-name:var(--font-display)] text-2xl font-semibold text-[var(--color-ink)]">
-            Masuk
+            {t('login.title')}
           </h2>
-          <p className="mt-1 text-sm text-[var(--color-ink-soft)]">
-            Masukkan kredensial akun kamu.
-          </p>
+          <p className="mt-1 text-sm text-[var(--color-ink-soft)]">{t('login.subtitle')}</p>
 
           {error && (
             <div className="mt-4 rounded-lg bg-[var(--color-danger-tint)] px-3 py-2 text-sm text-[var(--color-danger)]">
@@ -67,7 +74,7 @@ export default function LoginPage() {
           )}
 
           <label className="mt-6 block text-sm font-medium text-[var(--color-ink)]">
-            Username
+            {t('login.username')}
             <input
               type="text"
               required
@@ -80,7 +87,7 @@ export default function LoginPage() {
           </label>
 
           <label className="mt-4 block text-sm font-medium text-[var(--color-ink)]">
-            Password
+            {t('login.password')}
             <input
               type="password"
               required
@@ -96,7 +103,7 @@ export default function LoginPage() {
             disabled={isSubmitting}
             className="mt-6 w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-[var(--color-accent-ink)] transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {isSubmitting ? 'Memproses…' : 'Masuk'}
+            {isSubmitting ? t('login.submitting') : t('login.submit')}
           </button>
         </form>
       </div>

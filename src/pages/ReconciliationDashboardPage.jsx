@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { ClipboardCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -6,6 +6,7 @@ import { useLocationStore } from '../store/useLocationStore'
 import LocationFilterTree from '../components/LocationFilterTree'
 import { fetchReconciliationSummary } from '../api/dashboard'
 import { updateReconciliationThresholds } from '../api/reconciliation'
+import { fetchCashTransfers } from '../api/cashTransfer'
 import { formatRupiah } from '../utils/format'
 
 // Sama pola dengan filterByLocation() di DashboardPage.jsx — backend belum
@@ -27,6 +28,39 @@ function formatWaktu(dateLike) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+// ---- Riwayat Transfer Kas (#12 audit-fleksibilitas-sistem) ----
+// Dashboard alert di atas SENGAJA tetap snapshot kondisi sekarang (lihat
+// catatan di reconciliationDashboardService.js — merekonstruksi kondisi di
+// masa lalu butuh perubahan skema besar). Yang ditambahkan di sini adalah
+// histori transfer kas ITU SENDIRI (semua status: selesai/dibatalkan/
+// selisih/menunggu), yang datanya sudah lengkap tersimpan sejak awal dan
+// bisa difilter per rentang tanggal — cukup untuk kebutuhan audit "apa yang
+// terjadi bulan lalu" tanpa perlu merekonstruksi saldo historis.
+const HISTORY_STATUS_LABEL = {
+  menunggu_konfirmasi: 'Menunggu Konfirmasi',
+  selesai: 'Selesai',
+  selisih: 'Ada Selisih',
+  dibatalkan: 'Dibatalkan',
+}
+
+const HISTORY_STATUS_TONE = {
+  menunggu_konfirmasi: 'text-[var(--color-warning)]',
+  selesai: 'text-[var(--color-success)]',
+  selisih: 'text-[var(--color-danger)]',
+  dibatalkan: 'text-[var(--color-ink-soft)]',
+}
+
+function dateInputValue(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function defaultHistoryRange() {
+  const today = new Date()
+  const start = new Date(today)
+  start.setDate(start.getDate() - 29) // 30 hari terakhir termasuk hari ini
+  return { from: dateInputValue(start), to: dateInputValue(today) }
 }
 
 function AlertCard({ icon, label, value, tone, description }) {
@@ -163,6 +197,119 @@ function ThresholdsModal({ thresholds, onClose, onSaved }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function HistorySection({ filterSubCabangIds, filterByLocation }) {
+  const defaults = useMemo(() => defaultHistoryRange(), [])
+  const [from, setFrom] = useState(defaults.from)
+  const [to, setTo] = useState(defaults.to)
+  const [status, setStatus] = useState('')
+  const [rows, setRows] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setIsLoading(true)
+    setError(null)
+    fetchCashTransfers({ from, to, status: status || undefined })
+      .then((data) => {
+        if (!cancelled) setRows(data)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.response?.data?.message || 'Gagal memuat riwayat transfer kas.')
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [from, to, status])
+
+  const filteredRows = filterByLocation(rows, filterSubCabangIds, 'fromSubCabangId')
+
+  return (
+    <section className="mt-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold text-[var(--color-ink)]">
+          Riwayat Transfer Kas
+        </h2>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <input
+            type="date"
+            value={from}
+            max={to}
+            onChange={(e) => setFrom(e.target.value)}
+            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[var(--color-ink)]"
+          />
+          <span className="text-[var(--color-ink-soft)]">–</span>
+          <input
+            type="date"
+            value={to}
+            min={from}
+            onChange={(e) => setTo(e.target.value)}
+            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[var(--color-ink)]"
+          />
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[var(--color-ink)]"
+          >
+            <option value="">Semua status</option>
+            {Object.entries(HISTORY_STATUS_LABEL).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {error && <p className="mt-3 text-sm text-[var(--color-danger)]">{error}</p>}
+
+      {isLoading && !error && (
+        <div className="card-elevated mt-3 h-32 animate-pulse rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
+      )}
+
+      {!isLoading && !error && filteredRows.length === 0 && (
+        <EmptyState text="Tidak ada transfer kas pada rentang tanggal ini." />
+      )}
+
+      {!isLoading && !error && filteredRows.length > 0 && (
+        <div className="card-elevated mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
+                <th className="px-5 py-3 font-medium">Tanggal</th>
+                <th className="px-5 py-3 font-medium">Dari</th>
+                <th className="px-5 py-3 font-medium">Ke</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 text-right font-medium">Dikirim</th>
+                <th className="px-5 py-3 text-right font-medium">Diterima</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((t) => (
+                <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0">
+                  <td className="px-5 py-3 text-[var(--color-ink-soft)]">{formatWaktu(t.createdAt)}</td>
+                  <td className="px-5 py-3 font-medium text-[var(--color-ink)]">{t.fromSubCabang?.name}</td>
+                  <td className="px-5 py-3 text-[var(--color-ink-soft)]">{t.toCabang?.name}</td>
+                  <td className={`px-5 py-3 font-medium ${HISTORY_STATUS_TONE[t.status] || ''}`}>
+                    {HISTORY_STATUS_LABEL[t.status] || t.status}
+                  </td>
+                  <td className="px-5 py-3 text-right figure">{formatRupiah(t.jumlahDikirim)}</td>
+                  <td className="px-5 py-3 text-right figure">
+                    {t.jumlahDiterima != null ? formatRupiah(t.jumlahDiterima) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -389,6 +536,8 @@ export default function ReconciliationDashboardPage() {
           </section>
         </>
       )}
+
+      <HistorySection filterSubCabangIds={filterSubCabangIds} filterByLocation={filterByLocation} />
 
       {showSettings && data && (
         <ThresholdsModal thresholds={data.thresholds} onClose={() => setShowSettings(false)} onSaved={load} />
