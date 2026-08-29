@@ -21,8 +21,8 @@ export async function fetchKasirProducts({ subCabangId, search, categoryId } = {
   return data.data
 }
 
-export async function fetchCategories() {
-  const { data } = await apiClient.get('/api/kategori')
+export async function fetchCategories(subCabangId) {
+  const { data } = await apiClient.get('/api/kategori', { params: { subCabangId } })
   return data
 }
 

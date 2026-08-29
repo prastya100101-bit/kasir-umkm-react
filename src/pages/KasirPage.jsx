@@ -879,9 +879,13 @@ export default function KasirPage() {
   }, [shift, subCabangId, loadProducts])
 
   useEffect(() => {
-    if (!shift) return
-    fetchCategories().then(setCategories).catch(() => {})
-  }, [shift])
+    if (!shift || !subCabangId) return
+    fetchCategories(subCabangId).then(setCategories).catch(() => {})
+    // Reset filter kategori yang lagi dipilih setiap ganti outlet — kategori
+    // itu mungkin tidak relevan lagi (semua produknya disembunyikan) di
+    // outlet baru.
+    setCategoryId('')
+  }, [shift, subCabangId])
 
   // Hitung ulang field promo (itemDiscount, dsb) untuk qty baru — dipakai saat
   // item baru ditambah maupun saat qty berubah, supaya promo persen/nominal

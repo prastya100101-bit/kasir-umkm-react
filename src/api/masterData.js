@@ -73,6 +73,18 @@ export async function createProduct(payload) {
   return data
 }
 
+// Ketersediaan produk per outlet (BARU, 29 Agustus 2026) — lihat
+// productController.js listOutletAvailability/setOutletAvailability.
+export async function fetchProductOutlets(productId) {
+  const { data } = await apiClient.get(`/api/produk/${productId}/outlets`)
+  return data
+}
+
+export async function setProductOutlet(productId, subCabangId, tampil) {
+  const { data } = await apiClient.put(`/api/produk/${productId}/outlets/${subCabangId}`, { tampil })
+  return data
+}
+
 export async function updateProduct(id, payload) {
   const { data } = await apiClient.put(`/api/produk/${id}`, payload)
   return data

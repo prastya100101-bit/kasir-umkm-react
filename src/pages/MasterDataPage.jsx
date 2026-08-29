@@ -36,6 +36,8 @@ import {
   fetchCustomerKasbon,
   payCustomerKasbon,
   importProducts,
+  fetchProductOutlets,
+  setProductOutlet,
 } from '../api/masterData'
 import {
   fetchAllLocations,
@@ -1588,6 +1590,7 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
           Stok setelah ini hanya bisa diubah lewat Penyesuaian/Transfer Stok, bukan lewat form ini.
         </p>
       )}
+      {isEdit && <OutletAvailabilitySection productId={initial.id} />}
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-[var(--color-ink-soft)]">
           Batal
@@ -1604,6 +1607,69 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
   )
 }
 
+// Ketersediaan produk per outlet (BARU, 29 Agustus 2026) — model "opt-out":
+// checkbox tercentang = tampil di outlet itu (default semua tercentang utk
+// outlet yang belum pernah disentuh). Tiap toggle langsung dikirim ke server
+// (bukan ditunda sampai tombol Simpan produk ditekan) supaya independen dari
+// perubahan field lain di form & tidak hilang kalau modal ditutup tanpa submit.
+function OutletAvailabilitySection({ productId }) {
+  const [outlets, setOutlets] = useState(null) // null = masih loading
+  const [error, setError] = useState(null)
+  const [savingId, setSavingId] = useState(null)
+
+  useEffect(() => {
+    let mounted = true
+    fetchProductOutlets(productId)
+      .then((data) => { if (mounted) setOutlets(data) })
+      .catch((err) => { if (mounted) setError(errMsg(err, 'Gagal memuat ketersediaan outlet.')) })
+    return () => { mounted = false }
+  }, [productId])
+
+  async function toggle(subCabangId, next) {
+    setSavingId(subCabangId)
+    setError(null)
+    try {
+      await setProductOutlet(productId, subCabangId, next)
+      setOutlets((prev) => prev.map((o) => (o.subCabangId === subCabangId ? { ...o, tampil: next } : o)))
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan.'))
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-[var(--color-border)] p-3">
+      <div className="mb-1 text-sm font-medium text-[var(--color-ink)]">Ketersediaan di Outlet</div>
+      <p className="mb-2 text-xs text-[var(--color-ink-soft)]">
+        Centang = produk ini tampil & bisa dijual di Kasir outlet itu. Outlet baru otomatis tercentang.
+      </p>
+      {error && <p className="mb-2 text-xs text-[var(--color-danger)]">{error}</p>}
+      {outlets === null ? (
+        <p className="text-xs text-[var(--color-ink-soft)]">Memuat...</p>
+      ) : outlets.length === 0 ? (
+        <p className="text-xs text-[var(--color-ink-soft)]">Belum ada outlet (Sub Cabang) aktif.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          {outlets.map((o) => (
+            <label key={o.subCabangId} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={o.tampil}
+                disabled={savingId === o.subCabangId}
+                onChange={(e) => toggle(o.subCabangId, e.target.checked)}
+              />
+              <span>
+                {o.subCabangName}
+                {o.cabangName && <span className="text-[var(--color-ink-soft)]"> · {o.cabangName}</span>}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 // Alias nama kolom CSV yang diterima (case-insensitive, spasi/underscore
 // diabaikan) -> field kanonik yang dipakai backend importProducts.
 // Mendukung header Bahasa Indonesia & Inggris supaya user tidak perlu ganti
