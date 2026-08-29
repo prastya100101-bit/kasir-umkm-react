@@ -16,6 +16,7 @@ import {
 } from '../api/purchasing'
 import { formatRupiah } from '../utils/format'
 import PurchaseOrderPrintModal from '../components/PurchaseOrderPrintModal'
+import PurchaseReturnModal from '../components/PurchaseReturnModal'
 
 const TABS = [
   { id: 'po', label: 'Purchase Order', icon: '🧾' },
@@ -414,10 +415,11 @@ function PurchaseForm({ suppliers, subCabangOptions, defaultSubCabangId, isSuper
 // ============================================================
 // BARIS PO
 // ============================================================
-function PurchaseRow({ po, isSuperAdmin, onChanged }) {
+function PurchaseRow({ po, isSuperAdmin, cashAccounts, onChanged }) {
   const [isActing, setIsActing] = useState(false)
   const [error, setError] = useState(null)
   const [showPrint, setShowPrint] = useState(false)
+  const [showRetur, setShowRetur] = useState(false)
 
   async function act(action) {
     setIsActing(true)
@@ -436,6 +438,7 @@ function PurchaseRow({ po, isSuperAdmin, onChanged }) {
 
   const canDecide = isSuperAdmin && po.approvalStatus === 'pending'
   const canReceive = isSuperAdmin && po.approvalStatus !== 'pending' && po.approvalStatus !== 'rejected' && po.status !== 'diterima'
+  const canRetur = isSuperAdmin && po.status === 'diterima'
 
   return (
     <tr className="border-b border-[var(--color-border)] transition-colors last:border-0 hover:bg-[var(--color-canvas)]">
@@ -498,9 +501,29 @@ function PurchaseRow({ po, isSuperAdmin, onChanged }) {
               )}
             </>
           )}
+          {canRetur && (
+            <button
+              onClick={() => setShowRetur(true)}
+              disabled={isActing}
+              className="rounded-lg border border-[var(--color-danger)] px-3 py-1.5 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 disabled:opacity-50"
+            >
+              ↩️ Retur
+            </button>
+          )}
         </div>
         {error && <p className="mt-1 text-xs text-[var(--color-danger)]">{error}</p>}
         {showPrint && <PurchaseOrderPrintModal po={po} onClose={() => setShowPrint(false)} />}
+        {showRetur && (
+          <PurchaseReturnModal
+            po={po}
+            cashAccounts={cashAccounts}
+            onClose={() => setShowRetur(false)}
+            onDone={() => {
+              setShowRetur(false)
+              onChanged()
+            }}
+          />
+        )}
       </td>
     </tr>
   )
@@ -513,6 +536,7 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch] = useState('')
+  const [cashAccounts, setCashAccounts] = useState([])
 
   const load = useCallback((s) => {
     setIsLoading(true)
@@ -526,6 +550,12 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
   useEffect(() => {
     load(approvalStatus)
   }, [load, approvalStatus])
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      fetchCashAccounts().then(setCashAccounts).catch(() => setCashAccounts([]))
+    }
+  }, [isSuperAdmin])
 
   const allList = purchases || []
   const list = allList.filter((p) => {
@@ -634,7 +664,7 @@ function PurchaseOrderTab({ suppliers, subCabangOptions, defaultSubCabangId, isS
             </thead>
             <tbody>
               {list.map((po) => (
-                <PurchaseRow key={po.id} po={po} isSuperAdmin={isSuperAdmin} onChanged={() => load(approvalStatus)} />
+                <PurchaseRow key={po.id} po={po} isSuperAdmin={isSuperAdmin} cashAccounts={cashAccounts} onChanged={() => load(approvalStatus)} />
               ))}
             </tbody>
           </table>

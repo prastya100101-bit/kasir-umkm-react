@@ -60,6 +60,43 @@ export async function receivePurchase(id) {
 }
 
 // ============================================================
+// RETUR PEMBELIAN KE SUPPLIER — mount '/api/purchasing/purchases/:purchaseId/retur'
+// & '/api/purchasing/returs/:id'. create KHUSUS Super Admin (requireRole di
+// routes, sama seperti receive/decide/pay) — menyentuh stok & jurnal &
+// SupplierDebt, bukan sekadar view. List/detail boleh siapa saja yang
+// punya akses halaman 'purchasing'.
+//
+// refundMethod: 'utang' (kurangi SupplierDebt yang masih belum_lunas, tidak
+// ada pergerakan kas — backend menolak kalau melebihi sisa utang yang
+// belum dibayar) atau 'tunai'/'transfer' (supplier mengembalikan uang,
+// butuh cashAccountId).
+// ============================================================
+
+// items: [{ itemType: 'product'|'raw_material', id, qty }] — price TIDAK
+// dikirim, backend selalu pakai harga beli asli dari PurchaseItem.
+export async function createPurchaseReturn(purchaseId, { refundMethod, alasan, cashAccountId, items }) {
+  const id = crypto.randomUUID()
+  const { data } = await apiClient.post(`/api/purchasing/purchases/${purchaseId}/retur`, {
+    id,
+    refundMethod,
+    alasan: alasan || undefined,
+    cashAccountId: refundMethod === 'utang' ? undefined : cashAccountId || undefined,
+    items: items.map((it) => ({
+      itemType: it.itemType,
+      productId: it.itemType === 'raw_material' ? undefined : it.id,
+      rawMaterialId: it.itemType === 'raw_material' ? it.id : undefined,
+      qty: it.qty,
+    })),
+  })
+  return data
+}
+
+export async function fetchPurchaseReturns(purchaseId) {
+  const { data } = await apiClient.get(`/api/purchasing/purchases/${purchaseId}/retur`)
+  return data
+}
+
+// ============================================================
 // UTANG SUPPLIER — GET '/api/purchasing/debts', bayar '/api/purchasing/debts/:id/pay'
 // ============================================================
 
