@@ -4,6 +4,7 @@ import { Database } from 'lucide-react'
 import { useAuth, ROLES } from '../context/AuthContext'
 import { useLocationStore } from '../store/useLocationStore'
 import { formatRupiah } from '../utils/format'
+import ImageUploadField from '../components/ImageUploadField'
 import {
   fetchCategories,
   createCategory,
@@ -1438,6 +1439,7 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
           costPrice: initial.costPrice,
           sellPrice: initial.sellPrice,
           minStock: initial.minStock,
+          image: initial.image || '',
           supplierId: initial.supplierId || '',
           cepatBasi: initial.cepatBasi || false,
           active: initial.active,
@@ -1453,6 +1455,7 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
           stock: 0,
           stockGudang: 0,
           minStock: 0,
+          image: '',
           supplierId: '',
           cepatBasi: false,
         }
@@ -1473,6 +1476,7 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
           costPrice: Number(form.costPrice),
           sellPrice: Number(form.sellPrice),
           minStock: Number(form.minStock),
+          image: form.image || null,
         }
         if (!isEdit) {
           payload.stock = Number(form.stock)
@@ -1481,6 +1485,12 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose, busy }
         onSubmit(payload)
       }}
     >
+      <ImageUploadField
+        label="Foto Produk"
+        hint="Ditampilkan di grid Kasir. Otomatis diperkecil & dikompres."
+        value={form.image}
+        onChange={(dataUri) => set('image', dataUri)}
+      />
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Nama produk *">
           <input className={inputClass} value={form.name} onChange={(e) => set('name', e.target.value)} required />
@@ -2127,6 +2137,7 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
                     />
                   </th>
                 )}
+                <th className="w-12 px-5 py-2.5" />
                 <th className="px-5 py-2.5 font-medium">Produk</th>
                 <th className="px-5 py-2.5 font-medium">Kategori</th>
                 <th className="px-5 py-2.5 font-medium text-right">Harga Jual</th>
@@ -2144,6 +2155,13 @@ function ProductTab({ canWrite, categories, suppliers, rawMaterials }) {
                       <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)} />
                     </td>
                   )}
+                  <td className="px-5 py-3">
+                    <div className="h-9 w-9 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
+                      {p.image ? (
+                        <img src={p.image} alt="" className="h-full w-full object-cover" />
+                      ) : null}
+                    </div>
+                  </td>
                   <td className="px-5 py-3">
                     <div className="font-medium text-[var(--color-ink)]">{p.name}</div>
                     <div className="text-xs text-[var(--color-ink-soft)]">{p.sku || p.barcode || '—'}</div>

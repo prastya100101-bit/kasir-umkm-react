@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useTranslation } from '../i18n/I18nContext'
 import { formatDateTime } from '../utils/format'
+import ImageUploadField from '../components/ImageUploadField'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -577,14 +578,14 @@ export default function SettingsPage() {
             onChange={(e) => setProfil({ ...profil, storePhone: e.target.value })}
           />
         </Field>
-        <Field label="URL Logo" hint="Tempel URL gambar logo (dipakai di layar login).">
-          <input
-            className={inputClass}
-            value={profil.storeLogo}
-            onChange={(e) => setProfil({ ...profil, storeLogo: e.target.value })}
-            placeholder="https://..."
-          />
-        </Field>
+        <ImageUploadField
+          label="Logo Toko"
+          hint="Ambil dari galeri/file di perangkat. Dipakai di layar login."
+          value={profil.storeLogo}
+          onChange={(dataUri) => setProfil({ ...profil, storeLogo: dataUri })}
+          maxDimension={300}
+          shape="circle"
+        />
       </SectionCard>
 
       <SectionCard
