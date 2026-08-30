@@ -69,6 +69,52 @@ const JENIS_CUTI = [
   { id: 'sakit', label: 'Sakit' },
 ]
 
+// Foto absensi disimpan backend sebagai base64 JPEG polos (tanpa prefix
+// data:image/...) — lihat AttendanceModels.kt & hrisController.js. Thumbnail
+// kecil di tabel, klik untuk lihat ukuran penuh di modal.
+function fotoSrc(base64) {
+  if (!base64) return null
+  return base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`
+}
+
+function FotoAbsensiThumb({ base64, label, onOpen }) {
+  const src = fotoSrc(base64)
+  if (!src) return <span className="text-[var(--color-ink-soft)]">—</span>
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(src, label)}
+      title={`Lihat foto ${label}`}
+      className="h-10 w-10 overflow-hidden rounded-md border border-[var(--color-border)]"
+    >
+      <img src={src} alt={`Foto ${label}`} className="h-full w-full object-cover" />
+    </button>
+  )
+}
+
+function FotoAbsensiModal({ src, label, onClose }) {
+  if (!src) return null
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[90vh] max-w-lg overflow-hidden rounded-xl bg-[var(--color-surface)] p-3 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-medium text-[var(--color-ink)]">Foto {label}</span>
+          <button onClick={onClose} className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
+            ✕
+          </button>
+        </div>
+        <img src={src} alt={`Foto ${label}`} className="max-h-[75vh] w-full rounded-md object-contain" />
+      </div>
+    </div>
+  )
+}
+
 // ============================================================
 // TAB: Absensi Saya
 // ============================================================
@@ -78,6 +124,7 @@ function AbsensiSayaTab() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [info, setInfo] = useState(null)
+  const [previewFoto, setPreviewFoto] = useState(null) // { src, label }
 
   async function load() {
     setLoading(true)
@@ -171,6 +218,7 @@ function AbsensiSayaTab() {
                   <th className="py-2 pr-4">Check-in</th>
                   <th className="py-2 pr-4">Check-out</th>
                   <th className="py-2 pr-4">Jam Kerja</th>
+                  <th className="py-2 pr-4">Foto</th>
                   <th className="py-2">Catatan</th>
                 </tr>
               </thead>
@@ -181,6 +229,12 @@ function AbsensiSayaTab() {
                     <td className="py-2 pr-4">{formatJam(r.checkIn)}</td>
                     <td className="py-2 pr-4">{formatJam(r.checkOut)}</td>
                     <td className="py-2 pr-4">{r.jamKerja ?? '—'}</td>
+                    <td className="py-2 pr-4">
+                      <div className="flex gap-1">
+                        <FotoAbsensiThumb base64={r.fotoCheckIn} label="Masuk" onOpen={(src, label) => setPreviewFoto({ src, label })} />
+                        <FotoAbsensiThumb base64={r.fotoCheckOut} label="Pulang" onOpen={(src, label) => setPreviewFoto({ src, label })} />
+                      </div>
+                    </td>
                     <td className="py-2 text-[var(--color-ink-soft)]">{r.note || '—'}</td>
                   </tr>
                 ))}
@@ -189,6 +243,10 @@ function AbsensiSayaTab() {
           </div>
         )}
       </Card>
+
+      {previewFoto && (
+        <FotoAbsensiModal src={previewFoto.src} label={previewFoto.label} onClose={() => setPreviewFoto(null)} />
+      )}
     </div>
   )
 }
