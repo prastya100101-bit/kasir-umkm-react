@@ -77,18 +77,28 @@ function fotoSrc(base64) {
   return base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`
 }
 
+// Selalu tampilkan label "Masuk"/"Pulang" di bawah thumbnail (bukan cuma di
+// tooltip) supaya foto check-in vs check-out tidak tertukar sekilas lihat.
 function FotoAbsensiThumb({ base64, label, onOpen }) {
   const src = fotoSrc(base64)
-  if (!src) return <span className="text-[var(--color-ink-soft)]">—</span>
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(src, label)}
-      title={`Lihat foto ${label}`}
-      className="h-10 w-10 overflow-hidden rounded-md border border-[var(--color-border)]"
-    >
-      <img src={src} alt={`Foto ${label}`} className="h-full w-full object-cover" />
-    </button>
+    <div className="flex flex-col items-center gap-1">
+      {src ? (
+        <button
+          type="button"
+          onClick={() => onOpen(src, label)}
+          title={`Lihat foto ${label}`}
+          className="h-10 w-10 overflow-hidden rounded-md border border-[var(--color-border)]"
+        >
+          <img src={src} alt={`Foto ${label}`} className="h-full w-full object-cover" />
+        </button>
+      ) : (
+        <div className="flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-[var(--color-border)] text-[var(--color-ink-soft)]">
+          —
+        </div>
+      )}
+      <span className="text-[10px] uppercase text-[var(--color-ink-soft)]">{label}</span>
+    </div>
   )
 }
 
@@ -218,7 +228,8 @@ function AbsensiSayaTab() {
                   <th className="py-2 pr-4">Check-in</th>
                   <th className="py-2 pr-4">Check-out</th>
                   <th className="py-2 pr-4">Jam Kerja</th>
-                  <th className="py-2 pr-4">Foto</th>
+                  <th className="py-2 pr-4">Foto Masuk</th>
+                  <th className="py-2 pr-4">Foto Pulang</th>
                   <th className="py-2">Catatan</th>
                 </tr>
               </thead>
@@ -230,10 +241,10 @@ function AbsensiSayaTab() {
                     <td className="py-2 pr-4">{formatJam(r.checkOut)}</td>
                     <td className="py-2 pr-4">{r.jamKerja ?? '—'}</td>
                     <td className="py-2 pr-4">
-                      <div className="flex gap-1">
-                        <FotoAbsensiThumb base64={r.fotoCheckIn} label="Masuk" onOpen={(src, label) => setPreviewFoto({ src, label })} />
-                        <FotoAbsensiThumb base64={r.fotoCheckOut} label="Pulang" onOpen={(src, label) => setPreviewFoto({ src, label })} />
-                      </div>
+                      <FotoAbsensiThumb base64={r.fotoCheckIn} label="Masuk" onOpen={(src, label) => setPreviewFoto({ src, label })} />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <FotoAbsensiThumb base64={r.fotoCheckOut} label="Pulang" onOpen={(src, label) => setPreviewFoto({ src, label })} />
                     </td>
                     <td className="py-2 text-[var(--color-ink-soft)]">{r.note || '—'}</td>
                   </tr>
