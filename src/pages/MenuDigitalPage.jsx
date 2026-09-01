@@ -1,16 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { formatRupiah } from '../utils/format'
 import { fetchPublicMenu, createQrOrder } from '../api/mejaPreorderQr'
 
 // Halaman PUBLIK — diakses pelanggan lewat scan QR di meja, TANPA login.
 // Sengaja tidak pakai AppLayout/Sidebar (itu semua butuh auth) — halaman ini
 // berdiri sendiri dengan header sederhana.
+//
+// BARU (Multi-Cabang): `subCabangId` dibaca dari query string URL (mis.
+// /menu-digital?subCabangId=abc123 — link inilah yang di-encode jadi QR
+// per outlet). WAJIB diteruskan ke fetchPublicMenu (supaya menu yang
+// tampil cuma produk outlet itu) dan ke createQrOrder (supaya order
+// nempel ke shift outlet yang benar, bukan shift outlet lain yang
+// kebetulan sama-sama buka). Kalau parameter tidak ada (QR lama/setup
+// single-outlet), tetap jalan seperti sebelumnya — lihat fallback di
+// menuController.js dan qrOrderController.js.
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
 }
 
 export default function MenuDigitalPage() {
+  const [searchParams] = useSearchParams()
+  const subCabangId = searchParams.get('subCabangId') || undefined
+
   const [categories, setCategories] = useState([])
   const [products, setProducts] = useState([])
   const [categoryId, setCategoryId] = useState('')
@@ -29,14 +42,14 @@ export default function MenuDigitalPage() {
   }, [])
 
   useEffect(() => {
-    fetchPublicMenu()
+    fetchPublicMenu(subCabangId)
       .then((data) => {
         setCategories(data.categories || [])
         setProducts(data.products || [])
       })
       .catch((err) => setLoadError(errMsg(err, 'Menu tidak bisa dimuat. Coba scan ulang QR-nya.')))
       .finally(() => setIsLoading(false))
-  }, [])
+  }, [subCabangId])
 
   const filteredProducts = useMemo(() => {
     if (!categoryId) return products
@@ -70,6 +83,7 @@ export default function MenuDigitalPage() {
       const order = await createQrOrder({
         customerName: customerName.trim() || undefined,
         items: cart.map((i) => ({ productId: i.productId, name: i.name, qty: i.qty, price: i.price })),
+        subCabangId,
       })
       setConfirmedOrder(order)
       setCart([])

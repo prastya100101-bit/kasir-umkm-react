@@ -96,3 +96,54 @@ export async function deleteAnnouncementTemplateOverride(subCabangId) {
   const { data } = await apiClient.delete(`/api/settings/announcement-template/${subCabangId}`)
   return data
 }
+
+// BARU (Fase 10 item 7 — Kustomisasi Tampilan, area 1: Logo per Outlet,
+// Keputusan Tahap 0 #6). Pola identik fetchAnnouncementTemplateOverrides/
+// deleteAnnouncementTemplateOverride di atas — simpan override cukup lewat
+// saveSettings({ [`storeLogo:${subCabangId}`]: dataUri }), endpoint PUT
+// generic key-value sudah menerima key apapun.
+
+// GET /api/settings/logo-overrides — Super Admin only. Peta
+// { [subCabangId]: storeLogo (dataURI) } untuk semua override yang sudah diset.
+export async function fetchStoreLogoOverrides() {
+  const { data } = await apiClient.get('/api/settings/logo-overrides')
+  return data.overrides
+}
+
+// DELETE /api/settings/logo/:subCabangId — Super Admin only. Hapus
+// override 1 lokasi, lokasi itu kembali pakai logo global.
+export async function deleteStoreLogoOverride(subCabangId) {
+  const { data } = await apiClient.delete(`/api/settings/logo/${subCabangId}`)
+  return data
+}
+
+// BARU (Fase 10 item 7 — Kustomisasi Tampilan, area 4: Urutan Menu
+// Sidebar, Keputusan Tahap 0 #7). BEDA dari Settings key-value biasa di
+// atas: endpoint TERSENDIRI (bukan lewat saveSettings), karena gerbang
+// aksesnya beda — Manager/SPV boleh menulis (bukan cuma Super Admin),
+// dan dibatasi ke lokasi dalam scope mereka sendiri (lihat
+// settingsRoutes.js/settingsController.js).
+
+// GET /api/settings/sidebar-menu-order?subCabangId= — siapa saja yang
+// login boleh baca. `subCabangId` opsional (dipakai Manager/Super Admin
+// untuk lihat/kelola urutan lokasi tertentu; kasir/SPV 1 lokasi otomatis
+// dapat urutan lokasi sendiri, parameter diabaikan server).
+// Response: { subCabangId: string|null, order: string[] }.
+export async function fetchSidebarMenuOrder(subCabangId) {
+  const { data } = await apiClient.get('/api/settings/sidebar-menu-order', {
+    params: subCabangId ? { subCabangId } : undefined,
+  })
+  return data
+}
+
+// PUT /api/settings/sidebar-menu-order — body: { subCabangId?, order }.
+// `subCabangId` wajib diisi kalau yang menyimpan Manager/Super Admin
+// (tidak terikat 1 lokasi); opsional untuk SPV 1 lokasi (default lokasi
+// sendiri di server).
+export async function saveSidebarMenuOrder(order, subCabangId) {
+  const { data } = await apiClient.put('/api/settings/sidebar-menu-order', {
+    order,
+    ...(subCabangId ? { subCabangId } : {}),
+  })
+  return data
+}

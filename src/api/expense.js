@@ -53,3 +53,13 @@ export async function deleteExpense(id) {
   const { data } = await apiClient.delete(`/api/expense/${id}`)
   return data
 }
+
+// POST /api/expense/:id/decide — BARU (Fase 8, Approval Pengeluaran Besar).
+// body: { status: 'approved'|'rejected', catatan? }
+// Role SPV/Manager ke atas. Approved -> jurnal BARU diposting sekarang
+// (belum pernah diposting sejak create, lihat catatan backend). Rejected
+// -> tidak ada jurnal sama sekali.
+export async function decideExpenseApproval(id, status, catatan) {
+  const { data } = await apiClient.post(`/api/expense/${id}/decide`, { status, catatan })
+  return data.expense
+}

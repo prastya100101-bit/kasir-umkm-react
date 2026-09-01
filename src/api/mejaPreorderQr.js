@@ -175,8 +175,10 @@ export async function checkoutQrOrder(id, payload) {
 // kalau kebetulan ada (tidak masalah, backend abaikan untuk route publik).
 // ============================================================
 
-export async function fetchPublicMenu() {
-  const { data } = await apiClient.get('/api/menu')
+export async function fetchPublicMenu(subCabangId) {
+  const { data } = await apiClient.get('/api/menu', {
+    params: subCabangId ? { subCabangId } : {},
+  })
   return data
 }
 

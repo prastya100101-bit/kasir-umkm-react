@@ -4,7 +4,8 @@ import { Wallet } from 'lucide-react'
 import { formatRupiah } from '../utils/format'
 import { fetchCostCenters } from '../api/costCenters'
 import { fetchCashAccounts } from '../api/bankReconciliation'
-import { EXPENSE_TYPES, fetchExpenses, createExpense, updateExpense, deleteExpense } from '../api/expense'
+import { EXPENSE_TYPES, fetchExpenses, createExpense, updateExpense, deleteExpense, decideExpenseApproval } from '../api/expense'
+import { useAuth } from '../context/AuthContext'
 
 function errMsg(err, fallback) {
   return err.response?.data?.message || fallback
@@ -23,12 +24,25 @@ function Badge({ children, tone = 'neutral' }) {
   const tones = {
     neutral: 'bg-[var(--color-border)] text-[var(--color-ink-soft)]',
     blue: 'bg-[var(--color-info-tint,#dbeafe)] text-[var(--color-info,#2563eb)]',
+    amber: 'bg-[var(--color-warning-tint,#fef3c7)] text-[var(--color-warning,#b45309)]',
+    green: 'bg-[var(--color-success-tint,#dcfce7)] text-[var(--color-success,#16a34a)]',
+    red: 'bg-[var(--color-danger-tint)] text-[var(--color-danger)]',
   }
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone] || tones.neutral}`}>
       {children}
     </span>
   )
+}
+
+// BARU (Fase 8) — badge status approval. "not_required" sengaja tidak
+// ditampilkan sama sekali (mayoritas expense normal, badge akan jadi noise).
+function ApprovalBadge({ status }) {
+  if (!status || status === 'not_required') return null
+  if (status === 'pending') return <Badge tone="amber">Menunggu Approval</Badge>
+  if (status === 'approved') return <Badge tone="green">Disetujui</Badge>
+  if (status === 'rejected') return <Badge tone="red">Ditolak</Badge>
+  return null
 }
 
 function Modal({ title, onClose, children }) {
@@ -70,6 +84,9 @@ function fmtDate(d) {
 }
 
 export default function ExpensePage() {
+  const { role, isSuperAdmin } = useAuth()
+  const canDecideApproval = isSuperAdmin || role === 'SPV' || role === 'Manager'
+
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -78,6 +95,7 @@ export default function ExpensePage() {
   const [showCreate, setShowCreate] = useState(false)
   const [editingExpense, setEditingExpense] = useState(null)
   const [busyId, setBusyId] = useState(null)
+  const [decidingExpense, setDecidingExpense] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -104,6 +122,7 @@ export default function ExpensePage() {
     })
 
   const totalFiltered = filtered.reduce((sum, e) => sum + Number(e.amount), 0)
+  const pendingCount = expenses.filter((e) => e.approvalStatus === 'pending').length
 
   async function handleDelete(exp) {
     if (
@@ -127,6 +146,12 @@ export default function ExpensePage() {
   return (
     <AppLayout title="Pengeluaran / Beban" icon={Wallet}>
       <ErrorBanner message={error} />
+
+      {pendingCount > 0 && (
+        <div className="mb-4 rounded-lg bg-[var(--color-warning-tint,#fef3c7)] px-4 py-2.5 text-sm text-[var(--color-warning,#b45309)]">
+          {pendingCount} pengeluaran menunggu approval (di atas ambang batas nominal yang diatur di Pengaturan).
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -190,6 +215,7 @@ export default function ExpensePage() {
                 <th className="px-4 py-3">Kategori</th>
                 <th className="px-4 py-3">Keterangan</th>
                 <th className="px-4 py-3">Tipe</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Cost Center</th>
                 <th className="px-4 py-3">Dibayar dari</th>
                 <th className="px-4 py-3 text-right">Jumlah</th>
@@ -197,13 +223,18 @@ export default function ExpensePage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
+              {filtered.map((e) => {
+                const isPending = e.approvalStatus === 'pending'
+                return (
                 <tr key={e.id} className="border-t border-[var(--color-border)]">
                   <td className="px-4 py-3 text-[var(--color-ink-soft)]">{fmtDate(e.date)}</td>
                   <td className="px-4 py-3 font-medium text-[var(--color-ink)]">{e.category}</td>
                   <td className="px-4 py-3 text-[var(--color-ink-soft)]">{e.description || '-'}</td>
                   <td className="px-4 py-3">
                     <Badge tone="blue">{typeLabel(e.type)}</Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <ApprovalBadge status={e.approvalStatus} />
                   </td>
                   <td className="px-4 py-3 text-[var(--color-ink-soft)]">{e.costCenter?.name || '-'}</td>
                   <td className="px-4 py-3 text-[var(--color-ink-soft)]">{e.cashAccount?.name || 'Kas (default)'}</td>
@@ -212,23 +243,37 @@ export default function ExpensePage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => setEditingExpense(e)}
-                        className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-bg-soft)]"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        disabled={busyId === e.id}
-                        onClick={() => handleDelete(e)}
-                        className="rounded-md border border-[var(--color-danger)] px-2.5 py-1 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-50"
-                      >
-                        Hapus
-                      </button>
+                      {isPending && canDecideApproval ? (
+                        <button
+                          onClick={() => setDecidingExpense(e)}
+                          className="rounded-md bg-[var(--color-brand)] px-2.5 py-1 text-xs font-medium text-white"
+                        >
+                          Putuskan
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            disabled={isPending}
+                            title={isPending ? 'Menunggu approval — belum bisa diedit' : ''}
+                            onClick={() => setEditingExpense(e)}
+                            className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-bg-soft)] disabled:opacity-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            disabled={busyId === e.id}
+                            onClick={() => handleDelete(e)}
+                            className="rounded-md border border-[var(--color-danger)] px-2.5 py-1 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-50"
+                          >
+                            Hapus
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -239,6 +284,10 @@ export default function ExpensePage() {
         Operasional, Kredit akun Kas/Bank yang dipilih) dan otomatis muncul di Laporan Laba Rugi & Neraca. Field
         "Tipe" (Tetap/Variabel) hanya label kategorisasi tampilan — belum memisahkan akun COA. Edit/hapus akan
         mengganti/menghapus jurnal lama tanpa jurnal pembalik terpisah.
+        <br />
+        <strong>Approval Pengeluaran Besar:</strong> kalau nominal melewati ambang batas yang diatur Super Admin di
+        Pengaturan &gt; Ambang Batas Approval, biaya masuk status "Menunggu Approval" dan jurnalnya BELUM diposting
+        sampai disetujui SPV/Manager/Super Admin. Ditolak = tidak ada jurnal sama sekali.
       </div>
 
       {showCreate && (
@@ -257,6 +306,17 @@ export default function ExpensePage() {
           onClose={() => setEditingExpense(null)}
           onSaved={() => {
             setEditingExpense(null)
+            load()
+          }}
+        />
+      )}
+
+      {decidingExpense && (
+        <DecideExpenseModal
+          expense={decidingExpense}
+          onClose={() => setDecidingExpense(null)}
+          onDecided={() => {
+            setDecidingExpense(null)
             load()
           }}
         />
@@ -397,6 +457,78 @@ function ExpenseFormModal({ expense, onClose, onSaved }) {
           </button>
         </div>
       </form>
+    </Modal>
+  )
+}
+
+// BARU (Fase 8) — Modal keputusan approve/reject untuk expense pending.
+function DecideExpenseModal({ expense, onClose, onDecided }) {
+  const [catatan, setCatatan] = useState('')
+  const [saving, setSaving] = useState(null) // 'approved' | 'rejected' | null
+  const [error, setError] = useState(null)
+
+  async function handleDecide(status) {
+    if (status === 'rejected' && !window.confirm('Tolak pengeluaran ini? Tidak ada jurnal yang akan diposting.')) return
+    if (status === 'approved' && !window.confirm('Setujui pengeluaran ini? Jurnal akan diposting sekarang.')) return
+    setSaving(status)
+    setError(null)
+    try {
+      await decideExpenseApproval(expense.id, status, catatan.trim() || undefined)
+      onDecided()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memproses keputusan.'))
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <Modal title={`Putuskan — ${expense.category}`} onClose={onClose}>
+      <ErrorBanner message={error} />
+      <div className="mb-4 rounded-lg bg-[var(--color-bg-soft)] p-3 text-sm">
+        <p className="text-[var(--color-ink-soft)]">Jumlah</p>
+        <p className="text-lg font-semibold text-[var(--color-ink)]">{formatRupiah(expense.amount)}</p>
+        {expense.approvalThreshold != null && (
+          <p className="mt-1 text-xs text-[var(--color-ink-soft)]">
+            Ambang batas approval saat dicatat: {formatRupiah(expense.approvalThreshold)}
+          </p>
+        )}
+        {expense.description && (
+          <p className="mt-2 text-[var(--color-ink-soft)]">{expense.description}</p>
+        )}
+      </div>
+
+      <Field label="Catatan (opsional, terutama kalau ditolak)">
+        <textarea
+          className={inputClass}
+          rows={3}
+          value={catatan}
+          onChange={(e) => setCatatan(e.target.value)}
+          placeholder="Alasan/catatan keputusan..."
+        />
+      </Field>
+
+      <div className="mt-2 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm font-medium text-[var(--color-ink-soft)]">
+          Batal
+        </button>
+        <button
+          type="button"
+          disabled={saving !== null}
+          onClick={() => handleDecide('rejected')}
+          className="rounded-md border border-[var(--color-danger)] px-4 py-2 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-50"
+        >
+          {saving === 'rejected' ? 'Menolak...' : 'Tolak'}
+        </button>
+        <button
+          type="button"
+          disabled={saving !== null}
+          onClick={() => handleDecide('approved')}
+          className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {saving === 'approved' ? 'Menyetujui...' : 'Setujui'}
+        </button>
+      </div>
     </Modal>
   )
 }

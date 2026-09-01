@@ -35,8 +35,10 @@ import PromoPage from './pages/PromoPage'
 import ExpensePage from './pages/ExpensePage'
 import FinanceForecastPage from './pages/FinanceForecastPage'
 import AnomalyPage from './pages/AnomalyPage'
+import LaporanPeriodePage from './pages/LaporanPeriodePage'
 import PriceAnalysisPage from './pages/PriceAnalysisPage'
 import StockPredictionPage from './pages/StockPredictionPage'
+import NotificationCenterPage from './pages/NotificationCenterPage'
 import { ROLES } from './context/AuthContext'
 
 export default function App() {
@@ -212,6 +214,21 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
                 <AnomalyPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Laporan Periode — BARU (Fase 10 item 3). Backend
+              periodReportRoutes.js: requireRole('Manager','SPV') langsung
+              (Super Admin bypass otomatis) — read-only murni, SENGAJA
+              terpisah dari /akuntansi (AccountingPage, Super-Admin-only,
+              punya Jurnal Manual & Tutup Buku). Jangan arahkan SPV/Manager
+              ke /akuntansi. */}
+          <Route
+            path="/laporan-periode"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
+                <LaporanPeriodePage />
               </ProtectedRoute>
             }
           />
@@ -402,6 +419,23 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV]}>
                 <MasterDataPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Pusat Notifikasi & Approval Center — backend notificationRoutes.js
+              cuma verifyToken (self-service, selalu di-scope req.user.id).
+              Terbuka SEMUA role login: siapapun bisa dapat notifikasi
+              personal (mis. hasil keputusan cuti), tab "Approval Center"
+              di dalam halaman yang menyembunyikan seksi yang tidak relevan
+              per role (lihat NotificationCenterPage.jsx). */}
+          <Route
+            path="/notifikasi"
+            element={
+              <ProtectedRoute
+                allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW]}
+              >
+                <NotificationCenterPage />
               </ProtectedRoute>
             }
           />

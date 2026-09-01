@@ -53,6 +53,31 @@ const DEFAULT_ASSET_CATEGORY_ID_BY_LABEL = {
   lainnya: 'lainnya',
 }
 
+// Fase 10 item 1 — Checklist Buka/Tutup Toko. Sama alasan/pola dengan
+// DEFAULT_ASSET_CATEGORY_ID_BY_LABEL di atas: `id` dipakai backend sebagai
+// itemKey di ChecklistCompletion, jadi label default HARUS tetap resolve
+// ke id lama persis (lihat DEFAULT_CHECKLIST_BUKA_ITEMS/TUTUP_ITEMS di
+// controllers/settingsController.js) supaya centang lama tidak "hilang"
+// kalau admin submit ulang form tanpa mengubah teksnya.
+const DEFAULT_CHECKLIST_BUKA_ID_BY_LABEL = {
+  'nyalakan lampu & ac': 'nyalakan_lampu_ac',
+  'cek kebersihan area toko': 'cek_kebersihan',
+  'cek & hitung modal kasir': 'cek_modal_kasir',
+  'cek stok & display produk': 'cek_stok_display',
+  'nyalakan mesin edc/printer': 'nyalakan_alat_pembayaran',
+}
+const DEFAULT_CHECKLIST_TUTUP_ID_BY_LABEL = {
+  'hitung kas fisik laci': 'hitung_kas_fisik',
+  'matikan mesin edc/printer': 'matikan_alat_pembayaran',
+  'bersihkan & rapikan area toko': 'bersihkan_area',
+  'kunci pintu & gudang': 'kunci_pintu_gudang',
+  'matikan lampu & ac yang tidak perlu': 'matikan_lampu_ac',
+}
+const DEFAULT_CHECKLIST_BUKA_TEXT =
+  'Nyalakan lampu & AC, Cek kebersihan area toko, Cek & hitung modal kasir, Cek stok & display produk, Nyalakan mesin EDC/printer'
+const DEFAULT_CHECKLIST_TUTUP_TEXT =
+  'Hitung kas fisik laci, Matikan mesin EDC/printer, Bersihkan & rapikan area toko, Kunci pintu & gudang, Matikan lampu & AC yang tidak perlu'
+
 // Sesi B (Approval Threshold UI, 28 Agustus 2026) — key ApprovalConfig
 // nyata yang dibaca backend (dicek langsung dari kode, BUKAN dari nama key
 // yang sempat ditulis di roadmap/dokumen lama — dua di antaranya ternyata
@@ -73,6 +98,10 @@ const APPROVAL_THRESHOLD_KEYS = {
   produksi: 'produksi_approval_threshold',
   stockAdjustQty: 'stock_adjustment_qty_threshold',
   stockTransferQty: 'stock_transfer_qty_threshold',
+  // BARU (Fase 8, 31 Agustus 2026) — Approval Pengeluaran Besar. Konsumen:
+  // expenseController.getExpenseApprovalThreshold(). Nominal custom, sama
+  // pola dengan po_approval_threshold: 0/kosong = tidak pernah butuh approval.
+  expense: 'expense_approval_threshold',
 }
 
 function slugifyCategoryLabel(label) {
@@ -81,6 +110,27 @@ function slugifyCategoryLabel(label) {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+// Fase 10 item 1 — dipakai form Checklist Buka/Tutup Toko. Sama logika
+// dengan handler submit "Kategori Aset Tetap": label default dipetakan ke
+// id lama lewat `idByLabel` (case-insensitive), label baru di-slugify jadi
+// id baru. Duplikat id (mis. 2 label beda yang kebetulan slug-nya sama)
+// dilewati baris keduanya, bukan menimpa.
+function parseChecklistItems(text, idByLabel) {
+  const labels = text
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const seenIds = new Set()
+  const items = []
+  for (const label of labels) {
+    const id = idByLabel[label.toLowerCase()] || slugifyCategoryLabel(label)
+    if (!id || seenIds.has(id)) continue
+    seenIds.add(id)
+    items.push({ id, label })
+  }
+  return items
 }
 
 function Field({ label, hint, children }) {
@@ -327,6 +377,10 @@ export default function SettingsPage() {
   const [kategoriAset, setKategoriAset] = useState(
     'Bangunan, Kendaraan, Peralatan, Mesin, Elektronik, Perabotan, Lainnya'
   )
+  // Fase 10 item 1 — Checklist Buka/Tutup Toko, pola input sama seperti
+  // Kategori Aset Tetap di atas (teks label dipisah koma, id otomatis).
+  const [checklistBuka, setChecklistBuka] = useState(DEFAULT_CHECKLIST_BUKA_TEXT)
+  const [checklistTutup, setChecklistTutup] = useState(DEFAULT_CHECKLIST_TUTUP_TEXT)
 
   // Audit #18 (28 Agustus 2026): Template Panggilan per lokasi. Cabang/
   // sub-cabang tidak wajib punya template sendiri — dropdown pilih
@@ -346,6 +400,7 @@ export default function SettingsPage() {
     produksi: '',
     stockAdjustQty: '',
     stockTransferQty: '',
+    expense: '',
   })
   const [savingAmbang, setSavingAmbang] = useState(false)
 
@@ -374,6 +429,12 @@ export default function SettingsPage() {
         }
         if (Array.isArray(data.assetCategories) && data.assetCategories.length > 0) {
           setKategoriAset(data.assetCategories.map((c) => c.label).join(', '))
+        }
+        if (Array.isArray(data.checklistBukaItems) && data.checklistBukaItems.length > 0) {
+          setChecklistBuka(data.checklistBukaItems.map((c) => c.label).join(', '))
+        }
+        if (Array.isArray(data.checklistTutupItems) && data.checklistTutupItems.length > 0) {
+          setChecklistTutup(data.checklistTutupItems.map((c) => c.label).join(', '))
         }
       })
       .catch((err) => setError(errMsg(err, 'Gagal memuat pengaturan.')))
@@ -420,6 +481,7 @@ export default function SettingsPage() {
           produksi: byKey[APPROVAL_THRESHOLD_KEYS.produksi] ?? '',
           stockAdjustQty: byKey[APPROVAL_THRESHOLD_KEYS.stockAdjustQty] ?? '',
           stockTransferQty: byKey[APPROVAL_THRESHOLD_KEYS.stockTransferQty] ?? '',
+          expense: byKey[APPROVAL_THRESHOLD_KEYS.expense] ?? '',
         })
       })
       .catch(() => {})
@@ -487,6 +549,7 @@ export default function SettingsPage() {
       ['produksi', 'Ambang Approval Produksi'],
       ['stockAdjustQty', 'Ambang Auto-Approve Penyesuaian Stok'],
       ['stockTransferQty', 'Ambang Auto-Approve Transfer Stok'],
+      ['expense', 'Ambang Approval Pengeluaran'],
     ]) {
       const raw = ambangApproval[field]
       if (raw !== '' && (Number.isNaN(Number(raw)) || Number(raw) < 0)) {
@@ -496,7 +559,7 @@ export default function SettingsPage() {
     }
 
     const confirmed = window.confirm(
-      'Ubah ambang batas approval sekarang? Perubahan berlaku langsung untuk PO, Order Produksi, Penyesuaian Stok, dan Transfer Stok BERIKUTNYA (yang sudah diajukan sebelumnya tidak berubah).'
+      'Ubah ambang batas approval sekarang? Perubahan berlaku langsung untuk PO, Order Produksi, Penyesuaian Stok, Transfer Stok, dan Pengeluaran BERIKUTNYA (yang sudah diajukan sebelumnya tidak berubah).'
     )
     if (!confirmed) return
 
@@ -651,7 +714,7 @@ export default function SettingsPage() {
 
       <SectionCard
         title="Ambang Batas Approval"
-        note="Menentukan kapan Purchase Order, Order Produksi, Penyesuaian Stok, dan Transfer Stok butuh persetujuan — sebelumnya cuma bisa diubah langsung di database."
+        note="Menentukan kapan Purchase Order, Order Produksi, Penyesuaian Stok, Transfer Stok, dan Pengeluaran/Beban butuh persetujuan — sebelumnya cuma bisa diubah langsung di database."
         saving={savingAmbang}
         onSubmit={handleSaveAmbangApproval}
       >
@@ -704,6 +767,19 @@ export default function SettingsPage() {
             className={inputClass}
             value={ambangApproval.stockTransferQty}
             onChange={(e) => setAmbangApproval({ ...ambangApproval, stockTransferQty: e.target.value })}
+            placeholder="0"
+          />
+        </Field>
+        <Field
+          label="Ambang Approval Pengeluaran (Rp)"
+          hint="Pengeluaran/Beban (modul Pengeluaran) dengan nominal di atas ini butuh persetujuan SPV/Manager/Super Admin sebelum jurnalnya diposting. Isi 0 atau kosongkan = pengeluaran tidak pernah butuh approval."
+        >
+          <input
+            type="number"
+            min="0"
+            className={inputClass}
+            value={ambangApproval.expense}
+            onChange={(e) => setAmbangApproval({ ...ambangApproval, expense: e.target.value })}
             placeholder="0"
           />
         </Field>
@@ -864,6 +940,54 @@ export default function SettingsPage() {
             value={kategoriAset}
             onChange={(e) => setKategoriAset(e.target.value)}
             placeholder="Bangunan, Kendaraan, Peralatan, Mesin, Elektronik, Perabotan, Lainnya"
+          />
+        </Field>
+      </SectionCard>
+
+      <SectionCard
+        title="Checklist Buka Toko"
+        note="Daftar item yang wajib dicentang kasir saat buka toko/shift (APK). Pisahkan dengan koma, urut sesuai yang ingin ditampilkan."
+        saving={savingSection === 'checklistBuka'}
+        onSubmit={(e) => {
+          e.preventDefault()
+          const items = parseChecklistItems(checklistBuka, DEFAULT_CHECKLIST_BUKA_ID_BY_LABEL)
+          if (items.length === 0) {
+            setError('Isi minimal satu item checklist buka toko (dipisah koma).')
+            return
+          }
+          handleSave('checklistBuka', { checklistBukaItems: items })
+        }}
+      >
+        <Field label="Daftar Item" hint="Contoh: Nyalakan lampu & AC, Cek kebersihan area toko, Cek & hitung modal kasir">
+          <input
+            className={inputClass}
+            value={checklistBuka}
+            onChange={(e) => setChecklistBuka(e.target.value)}
+            placeholder={DEFAULT_CHECKLIST_BUKA_TEXT}
+          />
+        </Field>
+      </SectionCard>
+
+      <SectionCard
+        title="Checklist Tutup Toko"
+        note="Daftar item yang wajib dicentang kasir saat tutup toko/shift (APK). Pisahkan dengan koma, urut sesuai yang ingin ditampilkan."
+        saving={savingSection === 'checklistTutup'}
+        onSubmit={(e) => {
+          e.preventDefault()
+          const items = parseChecklistItems(checklistTutup, DEFAULT_CHECKLIST_TUTUP_ID_BY_LABEL)
+          if (items.length === 0) {
+            setError('Isi minimal satu item checklist tutup toko (dipisah koma).')
+            return
+          }
+          handleSave('checklistTutup', { checklistTutupItems: items })
+        }}
+      >
+        <Field label="Daftar Item" hint="Contoh: Hitung kas fisik laci, Matikan mesin EDC/printer, Bersihkan & rapikan area toko">
+          <input
+            className={inputClass}
+            value={checklistTutup}
+            onChange={(e) => setChecklistTutup(e.target.value)}
+            placeholder={DEFAULT_CHECKLIST_TUTUP_TEXT}
           />
         </Field>
       </SectionCard>

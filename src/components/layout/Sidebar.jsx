@@ -36,6 +36,7 @@ import {
   X,
   KeyRound,
   LogOut,
+  Bell,
 } from 'lucide-react'
 import { useAuth, ROLES } from '../../context/AuthContext'
 import ChangePasswordModal from '../ChangePasswordModal'
@@ -55,6 +56,10 @@ import { useTranslation } from '../../i18n/I18nContext'
 // Harga"), makna & routing (`to`) sama sekali tidak berubah.
 const NAV_ITEMS = [
   { to: '/', labelKey: 'nav.items.dashboard', icon: LayoutDashboard, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'utama' },
+  // Pusat Notifikasi & Approval Center — self-service backend (semua role
+  // login), ikon lonceng juga sudah ada di TopBar (NotificationBell.jsx)
+  // untuk akses cepat/badge — menu sidebar ini link ke halaman penuhnya.
+  { to: '/notifikasi', labelKey: 'nav.items.notifikasi', icon: Bell, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW], group: 'utama' },
   { to: '/kasir', labelKey: 'nav.items.kasir', icon: ShoppingCart, roles: [ROLES.SUPER_ADMIN, ROLES.KASIR, ROLES.CREW, ROLES.MANAGER, ROLES.SPV], group: 'utama' },
   // Riwayat Penjualan — daftar transaksi (beda dari Kasir yang layar checkout
   // aktif). Akses sama dengan Kasir; scope data per lokasi ditegakkan backend
@@ -75,6 +80,11 @@ const NAV_ITEMS = [
   // belum di-grant ke role selain Super Admin (sama pola Promo). Kalau
   // Manager/SPV dapat 403, atur lewat Manajemen Role > Izin Halaman.
   { to: '/anomali', labelKey: 'nav.items.anomali', icon: AlertTriangle, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'penjualan' },
+  // Laporan Periode — BARU (Fase 10 item 3). Backend requireRole('Manager',
+  // 'SPV') langsung (bukan requirePage — pageKey baru, belum ada baris di
+  // RolePagePermission untuk direuse), jadi TIDAK ada risiko 403 tersembunyi
+  // seperti Promo/Anomali di atas. Read-only, terpisah dari /akuntansi.
+  { to: '/laporan-periode', labelKey: 'nav.items.laporanPeriode', icon: BarChart3, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'penjualan' },
   // Pengeluaran/Beban — backend expenseRoutes.js: GET terbuka semua role
   // login, mutasi (create/update/delete) dikunci Super Admin di route level.
   { to: '/pengeluaran', labelKey: 'nav.items.pengeluaran', icon: Wallet, roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV], group: 'keuangan' },

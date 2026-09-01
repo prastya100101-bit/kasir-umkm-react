@@ -2,6 +2,7 @@ import { Menu } from 'lucide-react'
 import LocationSwitcher from './LocationSwitcher'
 import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
+import NotificationBell from './NotificationBell'
 import { useTranslation } from '../../i18n/I18nContext'
 
 export default function TopBar({ title, icon: Icon, onMenuClick }) {
@@ -36,6 +37,7 @@ export default function TopBar({ title, icon: Icon, onMenuClick }) {
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        <NotificationBell />
         <LanguageToggle />
         <ThemeToggle />
         <LocationSwitcher />

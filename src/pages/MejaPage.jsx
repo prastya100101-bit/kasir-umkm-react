@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import AppLayout from '../components/layout/AppLayout'
 import { Table2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useLocationStore } from '../store/useLocationStore'
 import { formatRupiah } from '../utils/format'
 import { fetchCurrentShift, searchCustomers } from '../api/kasir'
 import { searchProductItems } from '../api/stockPenuh'
@@ -32,6 +33,7 @@ const TABS = [
   { id: 'meja', label: 'Meja' },
   { id: 'preorder', label: 'Preorder' },
   { id: 'antrian', label: 'Antrian QR Order' },
+  { id: 'menu-digital', label: 'Menu Digital (QR)' },
 ]
 
 const PAY_METHODS = [
@@ -1061,6 +1063,72 @@ function AntrianTab({ shift }) {
 }
 
 // ============================================================
+// TAB: MENU DIGITAL (QR) — generator link + gambar QR per outlet, buat
+// diprint/ditempel di meja. BARU (Multi-Cabang) — sebelumnya tidak ada
+// cara sama sekali generate gambar QR-nya, staff harus bikin sendiri di
+// luar sistem (dan gampang salah tidak nyertain subCabangId, yang bikin
+// order nyasar ke outlet lain — lihat fix di qrOrderController.js).
+//
+// Gambar QR di-generate lewat layanan publik api.qrserver.com (bukan
+// library baru yang perlu di-install) — cukup <img src> yang isinya
+// encode URL menu itu sendiri, tidak ada data pelanggan yang dikirim ke
+// layanan itu.
+function MenuDigitalTab() {
+  const { availableLocations } = useLocationStore()
+  const subCabangs = availableLocations.filter((l) => l.type === 'SUBCABANG')
+  const [selectedId, setSelectedId] = useState(subCabangs[0]?.id || '')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!selectedId && subCabangs.length > 0) setSelectedId(subCabangs[0].id)
+  }, [subCabangs, selectedId])
+
+  const menuLink = selectedId
+    ? `${window.location.origin}/menu-digital?subCabangId=${selectedId}`
+    : `${window.location.origin}/menu-digital`
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(menuLink)}`
+
+  function copyLink() {
+    navigator.clipboard.writeText(menuLink).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="card-elevated max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+      <p className="mb-4 text-sm text-[var(--color-ink-soft)]">
+        Pilih outlet, lalu print/tampilkan QR ini di meja. Pelanggan scan → lihat menu → pesan sendiri,
+        masuk ke Antrian QR Order outlet yang dipilih.
+      </p>
+
+      {subCabangs.length > 0 && (
+        <Field label="Outlet">
+          <select className={inputClass} value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+            {subCabangs.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas)] p-4">
+        <img src={qrImageUrl} alt="QR Menu Digital" width={220} height={220} className="rounded-lg bg-white p-2" />
+        <p className="break-all text-center text-xs text-[var(--color-ink-soft)]">{menuLink}</p>
+        <button
+          onClick={copyLink}
+          className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface)]"
+        >
+          {copied ? 'Tersalin!' : 'Salin link'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
 // HALAMAN UTAMA
 // ============================================================
 
@@ -1093,7 +1161,9 @@ export default function MejaPage() {
         ))}
       </div>
 
-      {shift === undefined ? (
+      {tab === 'menu-digital' ? (
+        <MenuDigitalTab />
+      ) : shift === undefined ? (
         <div className="h-40 animate-pulse rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
       ) : tab === 'meja' ? (
         <MejaTab shift={shift} isSuperAdmin={isSuperAdmin} />
