@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { Settings } from 'lucide-react'
-import { fetchSettings, saveSettings, fetchAnnouncementTemplateOverrides, deleteAnnouncementTemplateOverride } from '../api/settings'
+import { fetchSettings, saveSettings, fetchAnnouncementTemplateOverrides, deleteAnnouncementTemplateOverride, fetchStoreLogoOverrides, deleteStoreLogoOverride } from '../api/settings'
 import { fetchAllLocations } from '../api/locations'
 import { fetchApprovalConfigs, setApprovalConfig } from '../api/approvalConfig'
 import { fetchBackupSummary, downloadBackup } from '../api/backup'
@@ -392,6 +392,13 @@ export default function SettingsPage() {
   const [panggilanOverrides, setPanggilanOverrides] = useState({}) // { [subCabangId]: {prefix, suffix} }
   const [savingOverride, setSavingOverride] = useState(false)
 
+  // Fase 10 item 7 poin E — Logo Toko per lokasi. Pola state identik
+  // Template Panggilan per Lokasi di atas (reuse subCabangList yang sama).
+  const [logoOverrideTarget, setLogoOverrideTarget] = useState('')
+  const [logoOverride, setLogoOverride] = useState('')
+  const [logoOverrides, setLogoOverrides] = useState({}) // { [subCabangId]: dataUri }
+  const [savingLogoOverride, setSavingLogoOverride] = useState(false)
+
   // Sesi B — Ambang Batas Approval. Disimpan di tabel ApprovalConfig
   // (bukan Settings), jadi dimuat & disimpan lewat api/approvalConfig.js,
   // terpisah dari fetchSettings/saveSettings di atas.
@@ -458,6 +465,9 @@ export default function SettingsPage() {
     fetchAnnouncementTemplateOverrides()
       .then((overrides) => { if (mounted) setPanggilanOverrides(overrides || {}) })
       .catch(() => {})
+    fetchStoreLogoOverrides()
+      .then((overrides) => { if (mounted) setLogoOverrides(overrides || {}) })
+      .catch(() => {})
     return () => {
       mounted = false
     }
@@ -495,6 +505,10 @@ export default function SettingsPage() {
     setPanggilanOverride({ prefix: existing?.prefix || '', suffix: existing?.suffix || '' })
   }, [panggilanOverrideTarget, panggilanOverrides])
 
+  useEffect(() => {
+    setLogoOverride(logoOverrideTarget ? logoOverrides[logoOverrideTarget] || '' : '')
+  }, [logoOverrideTarget, logoOverrides])
+
   async function handleSaveOverride(e) {
     e.preventDefault()
     if (!panggilanOverrideTarget) return
@@ -530,6 +544,44 @@ export default function SettingsPage() {
       setError(errMsg(err, 'Gagal menghapus override.'))
     } finally {
       setSavingOverride(false)
+    }
+  }
+
+  async function handleSaveLogoOverride(e) {
+    e.preventDefault()
+    if (!logoOverrideTarget || !logoOverride) return
+    setSavingLogoOverride(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await saveSettings({ [`storeLogo:${logoOverrideTarget}`]: logoOverride })
+      setLogoOverrides((prev) => ({ ...prev, [logoOverrideTarget]: logoOverride }))
+      setSuccess('Logo lokasi ini berhasil disimpan.')
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan logo lokasi.'))
+    } finally {
+      setSavingLogoOverride(false)
+    }
+  }
+
+  async function handleDeleteLogoOverride() {
+    if (!logoOverrideTarget) return
+    setSavingLogoOverride(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await deleteStoreLogoOverride(logoOverrideTarget)
+      setLogoOverrides((prev) => {
+        const next = { ...prev }
+        delete next[logoOverrideTarget]
+        return next
+      })
+      setLogoOverride('')
+      setSuccess('Override logo lokasi ini dihapus, kembali memakai logo global.')
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menghapus override logo.'))
+    } finally {
+      setSavingLogoOverride(false)
     }
   }
 
@@ -867,6 +919,64 @@ export default function SettingsPage() {
                     type="button"
                     disabled={savingOverride}
                     onClick={handleDeleteOverride}
+                    className="rounded-md border border-[var(--color-danger)] px-4 py-2 text-sm font-medium text-[var(--color-danger)] disabled:opacity-50"
+                  >
+                    Hapus Override
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {subCabangList.length > 0 && (
+        <div className="mb-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 card-elevated">
+          <h2 className="mb-1 font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-ink)]">
+            Logo Toko per Lokasi
+          </h2>
+          <p className="mb-4 text-xs text-[var(--color-ink-soft)]">
+            Opsional — beri logo sendiri untuk sub-cabang tertentu (mis. nama toko beda tiap cabang). Lokasi yang belum di-override tetap memakai Logo Toko global di atas. Dipakai di header & struk APK Kasir lokasi tersebut.
+          </p>
+
+          <Field label="Pilih Sub-Cabang">
+            <select
+              className={inputClass}
+              value={logoOverrideTarget}
+              onChange={(e) => setLogoOverrideTarget(e.target.value)}
+            >
+              <option value="">— pilih sub-cabang —</option>
+              {subCabangList.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{logoOverrides[s.id] ? ' (sudah punya override)' : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {logoOverrideTarget && (
+            <form onSubmit={handleSaveLogoOverride}>
+              <ImageUploadField
+                label="Logo Toko (lokasi ini)"
+                hint="Kosongkan (jangan pilih file baru) untuk pakai logo global."
+                value={logoOverride}
+                onChange={setLogoOverride}
+                maxDimension={300}
+                shape="circle"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={savingLogoOverride || !logoOverride}
+                  className="rounded-md bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {savingLogoOverride ? 'Menyimpan...' : 'Simpan Override'}
+                </button>
+                {logoOverrides[logoOverrideTarget] && (
+                  <button
+                    type="button"
+                    disabled={savingLogoOverride}
+                    onClick={handleDeleteLogoOverride}
                     className="rounded-md border border-[var(--color-danger)] px-4 py-2 text-sm font-medium text-[var(--color-danger)] disabled:opacity-50"
                   >
                     Hapus Override
