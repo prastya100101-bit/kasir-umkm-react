@@ -108,7 +108,7 @@ function RoleTab() {
     setLoading(true)
     setError(null)
     try {
-      setRoles(await fetchRoles())
+      setRoles(await fetchRoles({ includeInactive: true }))
     } catch (err) {
       setError(errMsg(err, 'Gagal memuat daftar role.'))
     } finally {
@@ -342,7 +342,15 @@ function RoleFormModal({ role, onClose, onSaved }) {
 }
 
 function RolePermissionModal({ role, onClose, onSaved }) {
-  const [selected, setSelected] = useState(new Set(role.pageKeys || []))
+  // Filter ke PAGE_KEYS yang masih valid — role.pageKeys dari DB bisa masih
+  // menyimpan key lama peninggalan sebelum cleanup 21 Agustus (mis. "dashboard",
+  // "kasir", dst) yang sudah tidak dikenal backend. Kalau tidak difilter, key
+  // basi itu ikut ke-seed ke Set tanpa checkbox untuk uncheck-nya, dan bikin
+  // Simpan Izin selalu 400 "pageKey tidak dikenal".
+  const validKeys = new Set(PAGE_KEYS.map((p) => p.key))
+  const [selected, setSelected] = useState(
+    new Set((role.pageKeys || []).filter((k) => validKeys.has(k)))
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 

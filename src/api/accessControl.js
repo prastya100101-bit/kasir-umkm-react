@@ -36,9 +36,13 @@ export const PAGE_KEYS = [
 ]
 
 // GET /api/roles — dipakai juga untuk dropdown pilihan role di form user.
-// Balikan: array role AKTIF saja { id, name, isSuperAdmin }.
-export async function fetchRoles() {
-  const { data } = await apiClient.get('/api/roles')
+// Default: role AKTIF saja { id, name, isSuperAdmin, active }.
+// Panggil fetchRoles({ includeInactive: true }) untuk tabel Manajemen Role,
+// supaya role yang baru dinonaktifkan tetap kelihatan (bukan hilang dari daftar).
+export async function fetchRoles({ includeInactive = false } = {}) {
+  const { data } = await apiClient.get('/api/roles', {
+    params: includeInactive ? { includeInactive: 'true' } : undefined,
+  })
   return data
 }
 
