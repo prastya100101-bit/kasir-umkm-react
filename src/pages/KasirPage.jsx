@@ -271,6 +271,11 @@ function ProductCard({ product, onAdd, promo }) {
       ? `-${Number(promo.discountValue)}%`
       : `-${formatRupiah(promo.discountValue)}`
     : ''
+  // Track gambar yang gagal dimuat (URL rusak/tidak bisa diakses) supaya
+  // jatuh ke placeholder ikon kotak, bukan menampilkan alt text terpotong
+  // (mis. "[" dari "[SmokeTest2A] ...") seperti yang sebelumnya terjadi.
+  const [imgFailed, setImgFailed] = useState(false)
+  const showImage = Boolean(product.image) && !imgFailed
 
   return (
     <button
@@ -282,8 +287,13 @@ function ProductCard({ product, onAdd, promo }) {
     >
       {/* Area foto — rasio persegi, konsisten walau foto belum ada */}
       <div className="relative aspect-square w-full bg-[var(--color-canvas)]">
-        {product.image ? (
-          <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+        {showImage ? (
+          <img
+            src={product.image}
+            alt={product.name}
+            className="h-full w-full object-cover"
+            onError={() => setImgFailed(true)}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <ProductImagePlaceholder />

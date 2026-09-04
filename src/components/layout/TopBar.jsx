@@ -1,12 +1,15 @@
-import { Menu } from 'lucide-react'
+import { useState } from 'react'
+import { Menu, Search } from 'lucide-react'
 import LocationSwitcher from './LocationSwitcher'
 import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
 import NotificationBell from './NotificationBell'
+import GlobalSearchModal from './GlobalSearchModal'
 import { useTranslation } from '../../i18n/I18nContext'
 
 export default function TopBar({ title, icon: Icon, onMenuClick }) {
   const { t } = useTranslation()
+  const [searchOpen, setSearchOpen] = useState(false)
   return (
     <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4 md:px-6">
       <div className="flex min-w-0 items-center gap-2">
@@ -37,11 +40,21 @@ export default function TopBar({ title, icon: Icon, onMenuClick }) {
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className="rounded-lg p-2 text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]"
+          aria-label="Cari"
+          title="Cari (produk/pelanggan/transaksi/karyawan)"
+        >
+          <Search className="h-5 w-5" />
+        </button>
         <NotificationBell />
         <LanguageToggle />
         <ThemeToggle />
         <LocationSwitcher />
       </div>
+      <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </header>
   )
 }
