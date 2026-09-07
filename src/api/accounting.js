@@ -102,6 +102,37 @@ export async function fetchArusKasPerOutlet(params) {
   return data
 }
 
+// Gabungan BEBAS dari beberapa Sub Cabang pilihan user (checkbox multi-
+// select, lihat OutletCombinePicker di AccountingPage.jsx) — beda dari
+// kolom "Total Cabang"/"Total Outlet" di atas yang kombinasinya sudah
+// ditentukan di muka. `subCabangIds` di params HARUS array of string; di
+// sini digabung jadi 1 string koma-pisah supaya tidak tergantung cara
+// axios serialize array (lihat parseSubCabangIds di accountingController.js).
+function withSubCabangIds(params, subCabangIds) {
+  return { ...params, subCabangIds: (subCabangIds || []).join(',') }
+}
+
+export async function fetchNeracaCombined({ asOfDate, subCabangIds }) {
+  const { data } = await apiClient.get('/api/accounting/neraca-combined', {
+    params: withSubCabangIds({ asOfDate }, subCabangIds),
+  })
+  return data
+}
+
+export async function fetchLabaRugiCombined({ from, to, subCabangIds }) {
+  const { data } = await apiClient.get('/api/accounting/laba-rugi-combined', {
+    params: withSubCabangIds({ from, to }, subCabangIds),
+  })
+  return data
+}
+
+export async function fetchArusKasCombined({ from, to, subCabangIds }) {
+  const { data } = await apiClient.get('/api/accounting/arus-kas-combined', {
+    params: withSubCabangIds({ from, to }, subCabangIds),
+  })
+  return data
+}
+
 export async function fetchPeriodComparison(params) {
   const { data } = await apiClient.get('/api/accounting/period-comparison', { params })
   return data

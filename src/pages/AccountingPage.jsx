@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AppLayout from '../components/layout/AppLayout'
 import { Calculator } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -16,6 +16,9 @@ import {
   fetchNeracaPerOutlet,
   fetchLabaRugiPerOutlet,
   fetchArusKasPerOutlet,
+  fetchNeracaCombined,
+  fetchLabaRugiCombined,
+  fetchArusKasCombined,
   fetchPeriodComparison,
   fetchQuickTaxEstimate,
   fetchAccountingPolicy,
@@ -156,6 +159,30 @@ function PercentCell({ value }) {
     return <span className="font-mono tabular-nums text-[var(--color-ink-soft)]">—</span>
   }
   return <span className="font-mono tabular-nums text-[var(--color-ink-soft)]">{Number(value).toFixed(1)}%</span>
+}
+
+// BARU (7 September 2026, permintaan user "rapikan tampilan persentase") —
+// dulu Rupiah & % selalu tampil berdampingan di setiap baris (2 kolom per
+// baris), jadi sempit/berantakan terutama di layar kecil. Sekarang user
+// pilih salah satu lewat dropdown "Tampilan" (ValueModeSelect di bawah),
+// dan tiap baris cukup render SATU kolom lewat ValueCell ini.
+function ValueCell({ mode, amount, percent, positiveGood = true }) {
+  return mode === 'persen'
+    ? <PercentCell value={percent} />
+    : <AmountCell value={amount} positiveGood={positiveGood} />
+}
+
+// Dropdown pilih tampilan Rupiah/Persen — dipasang di toolbar tiap tab
+// laporan (Neraca/Laba Rugi/Arus Kas), berlaku untuk mode "Gabungan" MAUPUN
+// "Per Outlet" (7 September 2026 — dulu "Per Outlet" murni Rupiah, sekarang
+// disamakan karena tiap kolom outlet juga sudah punya % dari backend).
+function ValueModeSelect({ value, onChange }) {
+  return (
+    <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="rupiah">Rupiah</option>
+      <option value="persen">Persen</option>
+    </select>
+  )
 }
 
 // BARU (27 Agustus 2026, permintaan user "laporan belum bisa di-export"):
@@ -563,14 +590,13 @@ function BukuBesarTab({ accounts }) {
 // ============================================================
 // TAB: NERACA
 // ============================================================
-function CoaSaldoRows({ nodes, depth = 0 }) {
+function CoaSaldoRows({ nodes, depth = 0, valueMode = 'rupiah' }) {
   return nodes.map((n) => (
     <tr key={n.id} className="border-b border-[var(--color-border)] last:border-0">
       <td className={`py-1.5 pr-3 ${n.isGroup ? 'font-semibold' : ''}`} style={{ paddingLeft: `${depth * 18}px` }}>
         {n.name}
       </td>
-      <td className="py-1.5 text-right"><AmountCell value={n.saldo} /></td>
-      <td className="py-1.5 pl-3 text-right"><PercentCell value={n.persen} /></td>
+      <td className="py-1.5 text-right"><ValueCell mode={valueMode} amount={n.saldo} percent={n.persen} /></td>
     </tr>
   ))
 }
@@ -586,8 +612,9 @@ function flattenAll(nodes) {
 // ============================================================
 // BREAKDOWN BERDAMPINGAN PER OUTLET (7 September 2026) — meniru format
 // laporan manual akuntan: Total <Cabang>, Rumah Produksi, Total Outlet,
-// lalu tiap outlet, semua berdampingan satu tabel. Murni Rupiah, TIDAK
-// ada kolom % (beda dari tampilan gabungan di atas), sesuai laporan asli.
+// lalu tiap outlet, semua berdampingan satu tabel. Bisa Rupiah ATAU Persen
+// (toggle sama seperti tampilan Gabungan) — persen tiap kolom dihitung
+// backend terhadap basis kolom itu sendiri.
 //
 // Dipakai bersama oleh NeracaTab, LabaRugiTab, ArusKasTab lewat toggle
 // "Gabungan" / "Per Outlet". Karena Bagan Akun (Neraca) sama untuk semua
@@ -604,11 +631,15 @@ function flattenSections(sections) {
   return out
 }
 
+// `values` per baris sekarang array of {value, persen} (bukan angka polos)
+// supaya OutletBreakdownTable bisa render mode Rupiah ATAU Persen — persen
+// tiap kolom sudah dihitung backend terhadap basis kolom itu sendiri,
+// tinggal dibawa serta lewat lookup yang sama (key by code/label).
 function buildAlignedRows(columns, extractFn) {
   const perColumnSections = columns.map((c) => extractFn(c.data))
   const canonical = perColumnSections[0] || []
   const lookups = perColumnSections.map((sections) =>
-    sections.map((sec) => new Map(sec.rows.map((r) => [r.code ?? r.label, r.value]))),
+    sections.map((sec) => new Map(sec.rows.map((r) => [r.code ?? r.label, { value: r.value, persen: r.persen }]))),
   )
   return canonical.map((sec, si) => ({
     section: sec.section,
@@ -616,41 +647,46 @@ function buildAlignedRows(columns, extractFn) {
       label: r.label,
       bold: r.bold,
       values: columns.map((_, ci) => {
-        if (ci === 0) return r.value
+        if (ci === 0) return { value: r.value, persen: r.persen }
         const key = r.code ?? r.label
         const map = lookups[ci]?.[si]
-        return map && map.has(key) ? map.get(key) : 0
+        return map && map.has(key) ? map.get(key) : { value: 0, persen: null }
       }),
     })),
   }))
 }
 
+// persen ikut ditempel di sini (bukan cuma value) supaya OutletBreakdownTable
+// bisa render mode "Persen" juga — basisnya SUDAH benar per kolom, karena
+// backend menghitung ulang % terhadap total kolom itu sendiri (lihat
+// toPercentNumber di accountingService.js), bukan sekadar warisan dari
+// kolom "Gabungan".
 function extractNeracaOutletRows(d) {
   return [
-    { section: 'ASET', rows: flattenAll(d.aset).map((n) => ({ code: n.code, label: n.name, value: n.saldo })) },
-    { section: '', rows: [{ code: '__totalAset', label: 'Total Aset', value: d.totalAset, bold: true }] },
-    { section: 'LIABILITAS', rows: flattenAll(d.liabilitas).map((n) => ({ code: n.code, label: n.name, value: n.saldo })) },
-    { section: '', rows: [{ code: '__totalLiabilitas', label: 'Total Liabilitas', value: d.totalLiabilitas, bold: true }] },
+    { section: 'ASET', rows: flattenAll(d.aset).map((n) => ({ code: n.code, label: n.name, value: n.saldo, persen: n.persen })) },
+    { section: '', rows: [{ code: '__totalAset', label: 'Total Aset', value: d.totalAset, persen: d.totalAsetPersen, bold: true }] },
+    { section: 'LIABILITAS', rows: flattenAll(d.liabilitas).map((n) => ({ code: n.code, label: n.name, value: n.saldo, persen: n.persen })) },
+    { section: '', rows: [{ code: '__totalLiabilitas', label: 'Total Liabilitas', value: d.totalLiabilitas, persen: d.totalLiabilitasPersen, bold: true }] },
     {
       section: 'EKUITAS',
       rows: [
-        ...flattenAll(d.ekuitas).map((n) => ({ code: n.code, label: n.name, value: n.saldo })),
-        { code: '__labaBerjalan', label: 'Laba Berjalan (belum ditutup)', value: d.labaBerjalan },
+        ...flattenAll(d.ekuitas).map((n) => ({ code: n.code, label: n.name, value: n.saldo, persen: n.persen })),
+        { code: '__labaBerjalan', label: 'Laba Berjalan (belum ditutup)', value: d.labaBerjalan, persen: d.labaBerjalanPersen },
       ],
     },
-    { section: '', rows: [{ code: '__totalEkuitas', label: 'Total Ekuitas', value: d.totalEkuitas, bold: true }] },
+    { section: '', rows: [{ code: '__totalEkuitas', label: 'Total Ekuitas', value: d.totalEkuitas, persen: d.totalEkuitasPersen, bold: true }] },
   ]
 }
 
 function extractLabaRugiOutletRows(d) {
   return [
-    { section: 'PENDAPATAN', rows: d.pendapatan.map((r) => ({ code: r.code, label: r.name, value: r.saldo })) },
-    { section: '', rows: [{ code: '__totalPendapatan', label: 'Total Pendapatan', value: d.totalPendapatan, bold: true }] },
-    { section: '', rows: [{ code: '__hpp', label: 'HPP', value: -Math.abs(Number(d.totalHPP || 0)) }] },
-    { section: '', rows: [{ code: '__labaKotor', label: 'Laba Kotor', value: d.labaKotor, bold: true }] },
-    { section: 'BEBAN', rows: d.beban.map((r) => ({ code: r.code, label: r.name, value: r.saldo })) },
-    { section: '', rows: [{ code: '__totalBeban', label: 'Total Beban', value: d.totalBeban, bold: true }] },
-    { section: '', rows: [{ code: '__labaBersih', label: 'Laba Bersih', value: d.labaBersih, bold: true }] },
+    { section: 'PENDAPATAN', rows: d.pendapatan.map((r) => ({ code: r.code, label: r.name, value: r.saldo, persen: r.persen })) },
+    { section: '', rows: [{ code: '__totalPendapatan', label: 'Total Pendapatan', value: d.totalPendapatan, persen: d.totalPendapatanPersen, bold: true }] },
+    { section: '', rows: [{ code: '__hpp', label: 'HPP', value: -Math.abs(Number(d.totalHPP || 0)), persen: d.totalHPPPersen }] },
+    { section: '', rows: [{ code: '__labaKotor', label: 'Laba Kotor', value: d.labaKotor, persen: d.labaKotorPersen, bold: true }] },
+    { section: 'BEBAN', rows: d.beban.map((r) => ({ code: r.code, label: r.name, value: r.saldo, persen: r.persen })) },
+    { section: '', rows: [{ code: '__totalBeban', label: 'Total Beban', value: d.totalBeban, persen: d.totalBebanPersen, bold: true }] },
+    { section: '', rows: [{ code: '__labaBersih', label: 'Laba Bersih', value: d.labaBersih, persen: d.labaBersihPersen, bold: true }] },
   ]
 }
 
@@ -659,11 +695,11 @@ function extractArusKasOutletRows(d) {
     {
       section: '',
       rows: [
-        { code: 'operasi', label: 'Arus Kas dari Aktivitas Operasi', value: d.arusOperasi },
-        { code: 'investasi', label: 'Arus Kas dari Aktivitas Investasi', value: d.arusInvestasi },
-        { code: 'pendanaan', label: 'Arus Kas dari Aktivitas Pendanaan', value: d.arusPendanaan },
-        { code: 'lainnya', label: 'Lainnya', value: d.arusLainnya },
-        { code: 'total', label: 'Total Arus Kas Bersih', value: d.totalArusKas, bold: true },
+        { code: 'operasi', label: 'Arus Kas dari Aktivitas Operasi', value: d.arusOperasi, persen: d.arusOperasiPersen },
+        { code: 'investasi', label: 'Arus Kas dari Aktivitas Investasi', value: d.arusInvestasi, persen: d.arusInvestasiPersen },
+        { code: 'pendanaan', label: 'Arus Kas dari Aktivitas Pendanaan', value: d.arusPendanaan, persen: d.arusPendanaanPersen },
+        { code: 'lainnya', label: 'Lainnya', value: d.arusLainnya, persen: d.arusLainnyaPersen },
+        { code: 'total', label: 'Total Arus Kas Bersih', value: d.totalArusKas, persen: d.totalArusKasPersen, bold: true },
       ],
     },
   ]
@@ -674,22 +710,48 @@ function extractArusKasOutletRows(d) {
 // versi terpisah per laporan karena struktur kolomnya sama (satu kolom
 // "Akun" + N kolom outlet), beda dengan handleExportCsv mode "Gabungan"
 // yang formatnya sudah spesifik per laporan (ada kolom % dsb).
-function exportOutletBreakdownCsv(filename, perOutletData, extractFn) {
-  if (!perOutletData || perOutletData.length === 0) return
-  const columns = perOutletData.flatMap((c) => c.kolom)
+// valueMode menentukan apa yang diekspor per kolom outlet — Rupiah (angka
+// mentah) atau Persen (relatif terhadap basis kolom itu sendiri), sama
+// seperti yang lagi ditampilkan di layar saat tombol Export ditekan.
+function exportOutletBreakdownCsv(filename, columns, extractFn, valueMode = 'rupiah') {
+  if (!columns || columns.length === 0) return
   const rows = flattenSections(buildAlignedRows(columns, extractFn)).filter((r) => !r.isHeader)
   const csvColumns = [
     { key: 'label', label: 'Akun' },
-    ...columns.map((c, ci) => ({ key: `col${ci}`, label: c.label, value: (r) => Number(r.values[ci] || 0) })),
+    ...columns.map((c, ci) => ({
+      key: `col${ci}`,
+      label: valueMode === 'persen' ? `${c.label} (%)` : c.label,
+      value: (r) =>
+        valueMode === 'persen'
+          ? (r.values[ci]?.persen === null || r.values[ci]?.persen === undefined ? '' : r.values[ci].persen)
+          : Number(r.values[ci]?.value || 0),
+    })),
   ]
-  downloadCsv(filename, rows, csvColumns)
+  downloadCsv(`${filename}${valueMode === 'persen' ? '_persen' : ''}`, rows, csvColumns)
 }
 
-function OutletBreakdownTable({ perOutletData, extractFn }) {
-  if (!perOutletData || perOutletData.length === 0) {
+// BARU (7 September 2026, permintaan user "kalo outlet saja ada 20 maka
+// tidak efisien") — dulu semua kolom dari SEMUA cabang & SEMUA outlet
+// ditumpuk berdampingan di satu tabel raksasa (flatMap semua c.kolom),
+// jadi sangat panjang ke samping begitu jumlah outlet bertambah. Sekarang
+// tabel hanya menerima `columns` yang SUDAH difilter oleh
+// OutletHierarchyFilter (pilih Cabang dulu, baru pilih Sub Cabang/Outlet
+// di dalam cabang itu) lewat resolveOutletColumns di bawah — komponen ini
+// sendiri tidak lagi tahu soal struktur cabang.
+// BARU (7 September 2026, permintaan user "bisa mode rupiah dan mode
+// persen ... saat digabung maupun saat dipecah per cabang/sub cabang") —
+// dulu tabel ini murni Rupiah. Sekarang terima `valueMode` sama seperti
+// tampilan Gabungan, render lewat ValueCell yang sama (persen tiap kolom
+// sudah dihitung backend terhadap basis kolom itu sendiri).
+//
+// `onRemoveColumn` opsional — dipasang di kolom hasil "Gabungan Sub Cabang"
+// custom (lihat OutletCombinePicker) supaya user bisa lepas satu-satu tanpa
+// mengulang dari awal; kolom bawaan (Total Cabang/Outlet/per-outlet) tidak
+// punya tombol ini.
+function OutletBreakdownTable({ columns, extractFn, valueMode = 'rupiah', onRemoveColumn }) {
+  if (!columns || columns.length === 0) {
     return <Empty text="Tidak ada outlet/cabang aktif untuk ditampilkan." />
   }
-  const columns = perOutletData.flatMap((c) => c.kolom)
   const rows = flattenSections(buildAlignedRows(columns, extractFn))
 
   return (
@@ -699,7 +761,21 @@ function OutletBreakdownTable({ perOutletData, extractFn }) {
           <tr className="text-left text-xs text-[var(--color-ink-soft)]">
             <th className="sticky left-0 bg-[var(--color-surface)] pb-1 pr-3">Akun</th>
             {columns.map((c) => (
-              <th key={c.key} className="whitespace-nowrap px-3 pb-1 text-right">{c.label}</th>
+              <th key={c.key} className="whitespace-nowrap px-3 pb-1 text-right">
+                <span className="inline-flex items-center gap-1">
+                  {c.label}
+                  {onRemoveColumn && c.removable && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveColumn(c.key)}
+                      title="Lepas kolom gabungan ini"
+                      className="rounded text-[var(--color-ink-soft)] hover:text-[var(--color-danger,#b91c1c)]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </span>
+              </th>
             ))}
           </tr>
         </thead>
@@ -718,7 +794,9 @@ function OutletBreakdownTable({ perOutletData, extractFn }) {
               >
                 <td className="sticky left-0 bg-[var(--color-surface)] py-1.5 pr-3">{r.label}</td>
                 {r.values.map((v, ci) => (
-                  <td key={ci} className="whitespace-nowrap px-3 py-1.5 text-right"><AmountCell value={v} /></td>
+                  <td key={ci} className="whitespace-nowrap px-3 py-1.5 text-right">
+                    <ValueCell mode={valueMode} amount={v.value} percent={v.persen} />
+                  </td>
                 ))}
               </tr>
             ),
@@ -727,6 +805,181 @@ function OutletBreakdownTable({ perOutletData, extractFn }) {
       </table>
     </div>
   )
+}
+
+// Ambil kolom mana yang ditampilkan di OutletBreakdownTable berdasarkan
+// pilihan Cabang + Sub Cabang dari OutletHierarchyFilter.
+// - cabangId === 'all'  -> ringkasan: 1 kolom per Cabang (kolom pertama tiap
+//   cabang, yaitu "Total <Cabang>" — backend selalu taruh kolom Total di
+//   depan, lihat komentar fetchNeracaPerOutlet dkk di api/accounting.js).
+// - cabangId spesifik, subKey === 'all' -> semua kolom milik cabang itu saja
+//   (Total <Cabang>, Gudang, Total Outlet, tiap outlet-nya) — tetap jauh
+//   lebih pendek daripada gabung semua cabang sekaligus.
+// - subKey spesifik -> cuma 1 kolom (outlet/baris itu saja).
+function resolveOutletColumns(perOutletData, cabangId, subKey) {
+  if (!perOutletData || perOutletData.length === 0) return []
+  if (cabangId === 'all') {
+    return perOutletData.map((c) => c.kolom?.[0]).filter(Boolean)
+  }
+  const cabang = perOutletData.find((c) => String(c.cabangId) === String(cabangId))
+  if (!cabang) return []
+  if (subKey === 'all') return cabang.kolom
+  return cabang.kolom.filter((k) => k.key === subKey)
+}
+
+// Dua dropdown berjenjang: pilih Cabang dulu, baru (kalau bukan "Semua
+// Cabang") pilih Sub Cabang/Outlet di dalam cabang itu. Dipasang di toolbar
+// tiap tab laporan saat viewMode === 'per-outlet'.
+function OutletHierarchyFilter({ perOutletData, cabangId, subKey, onCabangChange, onSubKeyChange }) {
+  const cabang = perOutletData?.find((c) => String(c.cabangId) === String(cabangId))
+  return (
+    <>
+      <select className={inputClass} value={cabangId} onChange={(e) => onCabangChange(e.target.value)}>
+        <option value="all">Semua Cabang (Ringkasan)</option>
+        {(perOutletData || []).map((c) => (
+          <option key={c.cabangId} value={c.cabangId}>{c.cabangName}</option>
+        ))}
+      </select>
+      {cabangId !== 'all' && cabang && (
+        <select className={inputClass} value={subKey} onChange={(e) => onSubKeyChange(e.target.value)}>
+          <option value="all">Semua Sub Cabang/Outlet</option>
+          {cabang.kolom.map((k) => (
+            <option key={k.key} value={k.key}>{k.label}</option>
+          ))}
+        </select>
+      )}
+    </>
+  )
+}
+
+// BARU (7 September 2026, permintaan user "bisa gabung beberapa sub
+// cabang") — dropdown centang bebas lintas-Cabang, TERPISAH dari
+// OutletHierarchyFilter di atas (yang cuma bisa pilih 1 Cabang lalu 1 Sub
+// Cabang di dalamnya). Sengaja pakai state lokal sendiri (bukan
+// useLocationStore seperti LocationFilterTree di komponen global lain) —
+// ini murni untuk membangun SATU kolom tambahan hasil gabungan di tabel
+// breakdown, bukan menyempitkan scope seluruh halaman.
+// Hanya menampilkan kolom subCabangId != null (outlet/rumah produksi asli),
+// bukan kolom "Total Cabang"/"Total Outlet" yang memang sudah gabungan.
+function OutletCombinePicker({ perOutletData, checkedIds, onToggleId, onApply, onClear, appliedCount, loading }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const rootRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setIsOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const groups = (perOutletData || [])
+    .map((c) => ({ cabangName: c.cabangName, items: (c.kolom || []).filter((k) => k.subCabangId) }))
+    .filter((g) => g.items.length > 0)
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] hover:bg-[var(--color-canvas)]"
+      >
+        + Gabungkan Sub Cabang{appliedCount > 0 ? ` (${appliedCount} kolom)` : ''}
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 z-20 mt-1 w-72 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
+          <div className="max-h-64 overflow-y-auto py-1">
+            {groups.length === 0 && (
+              <div className="px-3 py-2 text-sm text-[var(--color-ink-soft)]">Tidak ada sub cabang/outlet.</div>
+            )}
+            {groups.map((g) => (
+              <div key={g.cabangName}>
+                <div className="px-3 pt-2 pb-1 text-xs font-semibold text-[var(--color-ink-soft)]">{g.cabangName}</div>
+                {g.items.map((loc) => (
+                  <label
+                    key={loc.key}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-1 text-sm text-[var(--color-ink)] hover:bg-black/5"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedIds.includes(loc.subCabangId)}
+                      onChange={() => onToggleId(loc.subCabangId)}
+                      className="h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-brand)]"
+                    />
+                    {loc.label}
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-2 border-t border-[var(--color-border)] px-3 py-2">
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-xs text-[var(--color-ink-soft)] hover:underline"
+            >
+              Hapus semua gabungan
+            </button>
+            <button
+              type="button"
+              disabled={checkedIds.length === 0 || loading}
+              onClick={() => { onApply(); setIsOpen(false) }}
+              className="rounded-md bg-[var(--color-brass)] px-2.5 py-1 text-xs font-medium text-white disabled:opacity-40"
+            >
+              {loading ? 'Memuat…' : `Gabungkan (${checkedIds.length} dipilih)`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// State + logika fitur "Gabungkan Sub Cabang" bebas — dipakai sama oleh
+// NeracaTab/LabaRugiTab/ArusKasTab lewat OutletCombinePicker di atas.
+// `fetchCombined(ids)` harus sudah dibungkus caller dengan parameter
+// periode (asOfDate atau from/to) yang berlaku saat itu. `periodKey`
+// dipakai supaya kolom gabungan lama otomatis dibuang kalau periode
+// laporan diganti — datanya sudah tidak relevan lagi, mencegah kolom
+// "nyangkut" nunjukin angka periode sebelumnya.
+function useOutletCombine(fetchCombined, periodKey, onError) {
+  const [checkedIds, setCheckedIds] = useState([])
+  const [columns, setColumns] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => { setColumns([]); setCheckedIds([]) }, [periodKey])
+
+  function toggleId(id) {
+    setCheckedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  async function apply() {
+    if (checkedIds.length === 0) return
+    setLoading(true)
+    try {
+      const data = await fetchCombined(checkedIds)
+      const key = `combined-${checkedIds.slice().sort().join('-')}`
+      const label = `Gabungan (${checkedIds.length} lokasi)`
+      setColumns((prev) => [...prev.filter((c) => c.key !== key), { key, label, data, removable: true }])
+      setCheckedIds([])
+    } catch (err) {
+      onError?.(errMsg(err, 'Gagal menggabungkan sub cabang.'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function remove(key) {
+    setColumns((prev) => prev.filter((c) => c.key !== key))
+  }
+
+  function clear() {
+    setColumns([])
+    setCheckedIds([])
+  }
+
+  return { checkedIds, toggleId, columns, apply, remove, clear, loading }
 }
 
 // Toggle "Gabungan" / "Per Outlet" dipakai bersama NeracaTab/LabaRugiTab/
@@ -753,8 +1006,20 @@ function NeracaTab() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [viewMode, setViewMode] = useState('gabungan')
+  const [valueMode, setValueMode] = useState('rupiah')
   const [perOutletData, setPerOutletData] = useState(null)
   const [loadingPerOutlet, setLoadingPerOutlet] = useState(false)
+  const [outletCabangId, setOutletCabangId] = useState('all')
+  const [outletSubKey, setOutletSubKey] = useState('all')
+  const combine = useOutletCombine(
+    useCallback((ids) => fetchNeracaCombined({ asOfDate, subCabangIds: ids }), [asOfDate]),
+    asOfDate,
+    setError,
+  )
+  const outletColumns = useMemo(
+    () => [...resolveOutletColumns(perOutletData, outletCabangId, outletSubKey), ...combine.columns],
+    [perOutletData, outletCabangId, outletSubKey, combine.columns],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -806,12 +1071,33 @@ function NeracaTab() {
     <Card
       title="Neraca (Laporan Posisi Keuangan)"
       right={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+          <ValueModeSelect value={valueMode} onChange={setValueMode} />
+          {viewMode === 'per-outlet' && (
+            <>
+              <OutletHierarchyFilter
+                perOutletData={perOutletData}
+                cabangId={outletCabangId}
+                subKey={outletSubKey}
+                onCabangChange={(id) => { setOutletCabangId(id); setOutletSubKey('all') }}
+                onSubKeyChange={setOutletSubKey}
+              />
+              <OutletCombinePicker
+                perOutletData={perOutletData}
+                checkedIds={combine.checkedIds}
+                onToggleId={combine.toggleId}
+                onApply={combine.apply}
+                onClear={combine.clear}
+                appliedCount={combine.columns.length}
+                loading={combine.loading}
+              />
+            </>
+          )}
           <input type="date" className={inputClass} value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
           {viewMode === 'gabungan' && data && <ExportCsvButton onClick={handleExportCsv} />}
-          {viewMode === 'per-outlet' && perOutletData && (
-            <ExportCsvButton onClick={() => exportOutletBreakdownCsv(`neraca_per_outlet_${asOfDate}`, perOutletData, extractNeracaOutletRows)} />
+          {viewMode === 'per-outlet' && outletColumns.length > 0 && (
+            <ExportCsvButton onClick={() => exportOutletBreakdownCsv(`neraca_per_outlet_${asOfDate}`, outletColumns, extractNeracaOutletRows, valueMode)} />
           )}
         </div>
       }
@@ -821,7 +1107,7 @@ function NeracaTab() {
         <div>
           {loadingPerOutlet && <Skeleton />}
           {!loadingPerOutlet && perOutletData && (
-            <OutletBreakdownTable perOutletData={perOutletData} extractFn={extractNeracaOutletRows} />
+            <OutletBreakdownTable columns={outletColumns} extractFn={extractNeracaOutletRows} valueMode={valueMode} onRemoveColumn={combine.remove} />
           )}
         </div>
       ) : (
@@ -838,14 +1124,13 @@ function NeracaTab() {
             <div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Aset</th><th /><th className="pb-1 text-right">%</th></tr>
+                  <tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Aset</th><th className="pb-1 text-right">{valueMode === 'persen' ? '%' : 'Rp'}</th></tr>
                 </thead>
-                <tbody><CoaSaldoRows nodes={data.aset} /></tbody>
+                <tbody><CoaSaldoRows nodes={data.aset} valueMode={valueMode} /></tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[var(--color-border)] font-semibold">
                     <td className="py-2">Total Aset</td>
-                    <td className="py-2 text-right"><AmountCell value={data.totalAset} /></td>
-                    <td className="py-2 pl-3 text-right"><PercentCell value={data.totalAsetPersen} /></td>
+                    <td className="py-2 text-right"><ValueCell mode={valueMode} amount={data.totalAset} percent={data.totalAsetPersen} /></td>
                   </tr>
                 </tfoot>
               </table>
@@ -853,34 +1138,31 @@ function NeracaTab() {
             <div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Liabilitas</th><th /><th className="pb-1 text-right">%</th></tr>
+                  <tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Liabilitas</th><th className="pb-1 text-right">{valueMode === 'persen' ? '%' : 'Rp'}</th></tr>
                 </thead>
-                <tbody><CoaSaldoRows nodes={data.liabilitas} /></tbody>
+                <tbody><CoaSaldoRows nodes={data.liabilitas} valueMode={valueMode} /></tbody>
                 <tfoot>
                   <tr className="border-t border-[var(--color-border)] font-semibold">
                     <td className="py-1.5">Total Liabilitas</td>
-                    <td className="py-1.5 text-right"><AmountCell value={data.totalLiabilitas} /></td>
-                    <td className="py-1.5 pl-3 text-right"><PercentCell value={data.totalLiabilitasPersen} /></td>
+                    <td className="py-1.5 text-right"><ValueCell mode={valueMode} amount={data.totalLiabilitas} percent={data.totalLiabilitasPersen} /></td>
                   </tr>
                 </tfoot>
               </table>
               <table className="mt-4 w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Ekuitas</th><th /><th className="pb-1 text-right">%</th></tr>
+                  <tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Ekuitas</th><th className="pb-1 text-right">{valueMode === 'persen' ? '%' : 'Rp'}</th></tr>
                 </thead>
                 <tbody>
-                  <CoaSaldoRows nodes={data.ekuitas} />
+                  <CoaSaldoRows nodes={data.ekuitas} valueMode={valueMode} />
                   <tr className="border-b border-[var(--color-border)]">
                     <td className="py-1.5">Laba Berjalan (belum ditutup)</td>
-                    <td className="py-1.5 text-right"><AmountCell value={data.labaBerjalan} /></td>
-                    <td className="py-1.5 pl-3 text-right"><PercentCell value={data.labaBerjalanPersen} /></td>
+                    <td className="py-1.5 text-right"><ValueCell mode={valueMode} amount={data.labaBerjalan} percent={data.labaBerjalanPersen} /></td>
                   </tr>
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-[var(--color-border)] font-semibold">
                     <td className="py-1.5">Total Ekuitas</td>
-                    <td className="py-1.5 text-right"><AmountCell value={data.totalEkuitas} /></td>
-                    <td className="py-1.5 pl-3 text-right"><PercentCell value={data.totalEkuitasPersen} /></td>
+                    <td className="py-1.5 text-right"><ValueCell mode={valueMode} amount={data.totalEkuitas} percent={data.totalEkuitasPersen} /></td>
                   </tr>
                 </tfoot>
               </table>
@@ -889,9 +1171,12 @@ function NeracaTab() {
                   <tr className="border-t-2 border-[var(--color-border)] font-semibold">
                     <td className="py-2">Total Liabilitas + Ekuitas</td>
                     <td className="py-2 text-right">
-                      <AmountCell value={Number(data.totalLiabilitas) + Number(data.totalEkuitas)} />
+                      <ValueCell
+                        mode={valueMode}
+                        amount={Number(data.totalLiabilitas) + Number(data.totalEkuitas)}
+                        percent={data.totalAsetPersen}
+                      />
                     </td>
-                    <td className="py-2 pl-3 text-right"><PercentCell value={data.totalAsetPersen} /></td>
                   </tr>
                 </tbody>
               </table>
@@ -908,70 +1193,57 @@ function NeracaTab() {
 // ============================================================
 // TAB: LABA RUGI
 // ============================================================
-function LabaRugiView({ data }) {
+function LabaRugiView({ data, valueMode = 'rupiah' }) {
   return (
     <div className="grid grid-cols-2 gap-6">
       <div>
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Pendapatan</th><th /><th className="pb-1 text-right">%</th></tr></thead>
+          <thead><tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Pendapatan</th><th className="pb-1 text-right">{valueMode === 'persen' ? '%' : 'Rp'}</th></tr></thead>
           <tbody>
             {data.pendapatan.map((r) => (
               <tr key={r.code} className="border-b border-[var(--color-border)] last:border-0">
                 <td className="py-1.5">{r.name}</td>
-                <td className="py-1.5 text-right"><AmountCell value={r.saldo} /></td>
-                <td className="py-1.5 pl-3 text-right"><PercentCell value={r.persen} /></td>
+                <td className="py-1.5 text-right"><ValueCell mode={valueMode} amount={r.saldo} percent={r.persen} /></td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t border-[var(--color-border)] font-semibold">
               <td className="py-1.5">Total Pendapatan</td>
-              <td className="py-1.5 text-right"><AmountCell value={data.totalPendapatan} /></td>
-              <td className="py-1.5 pl-3 text-right"><PercentCell value={data.totalPendapatanPersen} /></td>
+              <td className="py-1.5 text-right"><ValueCell mode={valueMode} amount={data.totalPendapatan} percent={data.totalPendapatanPersen} /></td>
             </tr>
           </tfoot>
         </table>
         <div className="mt-3 flex items-center justify-between text-sm">
           <span>HPP</span>
-          <div className="flex items-center gap-3">
-            <AmountCell value={data.totalHPP} positiveGood={false} />
-            <PercentCell value={data.totalHPPPersen} />
-          </div>
+          <ValueCell mode={valueMode} amount={data.totalHPP} percent={data.totalHPPPersen} positiveGood={false} />
         </div>
         <div className="mt-1 flex items-center justify-between border-t border-[var(--color-border)] pt-1 text-sm font-semibold">
           <span>Laba Kotor</span>
-          <div className="flex items-center gap-3">
-            <AmountCell value={data.labaKotor} />
-            <PercentCell value={data.labaKotorPersen} />
-          </div>
+          <ValueCell mode={valueMode} amount={data.labaKotor} percent={data.labaKotorPersen} />
         </div>
       </div>
       <div>
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Beban</th><th /><th className="pb-1 text-right">%</th></tr></thead>
+          <thead><tr className="text-left text-xs text-[var(--color-ink-soft)]"><th className="pb-1">Beban</th><th className="pb-1 text-right">{valueMode === 'persen' ? '%' : 'Rp'}</th></tr></thead>
           <tbody>
             {data.beban.map((r) => (
               <tr key={r.code} className="border-b border-[var(--color-border)] last:border-0">
                 <td className="py-1.5">{r.name}</td>
-                <td className="py-1.5 text-right"><AmountCell value={r.saldo} positiveGood={false} /></td>
-                <td className="py-1.5 pl-3 text-right"><PercentCell value={r.persen} /></td>
+                <td className="py-1.5 text-right"><ValueCell mode={valueMode} amount={r.saldo} percent={r.persen} positiveGood={false} /></td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t border-[var(--color-border)] font-semibold">
               <td className="py-1.5">Total Beban</td>
-              <td className="py-1.5 text-right"><AmountCell value={data.totalBeban} positiveGood={false} /></td>
-              <td className="py-1.5 pl-3 text-right"><PercentCell value={data.totalBebanPersen} /></td>
+              <td className="py-1.5 text-right"><ValueCell mode={valueMode} amount={data.totalBeban} percent={data.totalBebanPersen} positiveGood={false} /></td>
             </tr>
           </tfoot>
         </table>
         <div className="mt-4 flex items-center justify-between rounded-lg bg-[var(--color-canvas)] px-3 py-2 text-sm font-semibold">
           <span>Laba Bersih</span>
-          <div className="flex items-center gap-3">
-            <AmountCell value={data.labaBersih} />
-            <PercentCell value={data.labaBersihPersen} />
-          </div>
+          <ValueCell mode={valueMode} amount={data.labaBersih} percent={data.labaBersihPersen} />
         </div>
       </div>
     </div>
@@ -985,8 +1257,20 @@ function LabaRugiTab() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [viewMode, setViewMode] = useState('gabungan')
+  const [valueMode, setValueMode] = useState('rupiah')
   const [perOutletData, setPerOutletData] = useState(null)
   const [loadingPerOutlet, setLoadingPerOutlet] = useState(false)
+  const [outletCabangId, setOutletCabangId] = useState('all')
+  const [outletSubKey, setOutletSubKey] = useState('all')
+  const combine = useOutletCombine(
+    useCallback((ids) => fetchLabaRugiCombined({ from, to, subCabangIds: ids }), [from, to]),
+    `${from}-${to}`,
+    setError,
+  )
+  const outletColumns = useMemo(
+    () => [...resolveOutletColumns(perOutletData, outletCabangId, outletSubKey), ...combine.columns],
+    [perOutletData, outletCabangId, outletSubKey, combine.columns],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1039,14 +1323,35 @@ function LabaRugiTab() {
     <Card
       title="Laba Rugi"
       right={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+          <ValueModeSelect value={valueMode} onChange={setValueMode} />
+          {viewMode === 'per-outlet' && (
+            <>
+              <OutletHierarchyFilter
+                perOutletData={perOutletData}
+                cabangId={outletCabangId}
+                subKey={outletSubKey}
+                onCabangChange={(id) => { setOutletCabangId(id); setOutletSubKey('all') }}
+                onSubKeyChange={setOutletSubKey}
+              />
+              <OutletCombinePicker
+                perOutletData={perOutletData}
+                checkedIds={combine.checkedIds}
+                onToggleId={combine.toggleId}
+                onApply={combine.apply}
+                onClear={combine.clear}
+                appliedCount={combine.columns.length}
+                loading={combine.loading}
+              />
+            </>
+          )}
           <input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="text-xs text-[var(--color-ink-soft)]">s/d</span>
           <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} />
           {viewMode === 'gabungan' && data && <ExportCsvButton onClick={handleExportCsv} />}
-          {viewMode === 'per-outlet' && perOutletData && (
-            <ExportCsvButton onClick={() => exportOutletBreakdownCsv(`laba-rugi_per_outlet_${from}_${to}`, perOutletData, extractLabaRugiOutletRows)} />
+          {viewMode === 'per-outlet' && outletColumns.length > 0 && (
+            <ExportCsvButton onClick={() => exportOutletBreakdownCsv(`laba-rugi_per_outlet_${from}_${to}`, outletColumns, extractLabaRugiOutletRows, valueMode)} />
           )}
         </div>
       }
@@ -1056,13 +1361,13 @@ function LabaRugiTab() {
         <div>
           {loadingPerOutlet && <Skeleton />}
           {!loadingPerOutlet && perOutletData && (
-            <OutletBreakdownTable perOutletData={perOutletData} extractFn={extractLabaRugiOutletRows} />
+            <OutletBreakdownTable columns={outletColumns} extractFn={extractLabaRugiOutletRows} valueMode={valueMode} onRemoveColumn={combine.remove} />
           )}
         </div>
       ) : (
         <>
           {loading && <Skeleton />}
-          {!loading && data && <LabaRugiView data={data} />}
+          {!loading && data && <LabaRugiView data={data} valueMode={valueMode} />}
         </>
       )}
     </Card>
@@ -1080,8 +1385,20 @@ function ArusKasTab() {
   const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [viewMode, setViewMode] = useState('gabungan')
+  const [valueMode, setValueMode] = useState('rupiah')
   const [perOutletData, setPerOutletData] = useState(null)
   const [loadingPerOutlet, setLoadingPerOutlet] = useState(false)
+  const [outletCabangId, setOutletCabangId] = useState('all')
+  const [outletSubKey, setOutletSubKey] = useState('all')
+  const combine = useOutletCombine(
+    useCallback((ids) => fetchArusKasCombined({ from, to, subCabangIds: ids }), [from, to]),
+    `${from}-${to}`,
+    setError,
+  )
+  const outletColumns = useMemo(
+    () => [...resolveOutletColumns(perOutletData, outletCabangId, outletSubKey), ...combine.columns],
+    [perOutletData, outletCabangId, outletSubKey, combine.columns],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1141,14 +1458,35 @@ function ArusKasTab() {
     <Card
       title="Arus Kas"
       right={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+          <ValueModeSelect value={valueMode} onChange={setValueMode} />
+          {viewMode === 'per-outlet' && (
+            <>
+              <OutletHierarchyFilter
+                perOutletData={perOutletData}
+                cabangId={outletCabangId}
+                subKey={outletSubKey}
+                onCabangChange={(id) => { setOutletCabangId(id); setOutletSubKey('all') }}
+                onSubKeyChange={setOutletSubKey}
+              />
+              <OutletCombinePicker
+                perOutletData={perOutletData}
+                checkedIds={combine.checkedIds}
+                onToggleId={combine.toggleId}
+                onApply={combine.apply}
+                onClear={combine.clear}
+                appliedCount={combine.columns.length}
+                loading={combine.loading}
+              />
+            </>
+          )}
           <input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="text-xs text-[var(--color-ink-soft)]">s/d</span>
           <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} />
           {viewMode === 'gabungan' && data && <ExportCsvButton onClick={handleExportCsv} />}
-          {viewMode === 'per-outlet' && perOutletData && (
-            <ExportCsvButton onClick={() => exportOutletBreakdownCsv(`arus-kas_per_outlet_${from}_${to}`, perOutletData, extractArusKasOutletRows)} />
+          {viewMode === 'per-outlet' && outletColumns.length > 0 && (
+            <ExportCsvButton onClick={() => exportOutletBreakdownCsv(`arus-kas_per_outlet_${from}_${to}`, outletColumns, extractArusKasOutletRows, valueMode)} />
           )}
         </div>
       }
@@ -1158,7 +1496,7 @@ function ArusKasTab() {
         <div>
           {loadingPerOutlet && <Skeleton />}
           {!loadingPerOutlet && perOutletData && (
-            <OutletBreakdownTable perOutletData={perOutletData} extractFn={extractArusKasOutletRows} />
+            <OutletBreakdownTable columns={outletColumns} extractFn={extractArusKasOutletRows} valueMode={valueMode} onRemoveColumn={combine.remove} />
           )}
         </div>
       ) : (
@@ -1173,10 +1511,7 @@ function ArusKasTab() {
                 className="flex w-full items-center justify-between text-left text-sm"
               >
                 <span>{r.label} {(data.detail[r.key]?.length ?? 0) > 0 && <span className="text-xs text-[var(--color-ink-soft)]">({data.detail[r.key].length} transaksi, klik untuk detail)</span>}</span>
-                <div className="flex items-center gap-3">
-                  <AmountCell value={data[r.total]} />
-                  <PercentCell value={data[r.persen]} />
-                </div>
+                <ValueCell mode={valueMode} amount={data[r.total]} percent={data[r.persen]} />
               </button>
               {expanded === r.key && data.detail[r.key]?.length > 0 && (
                 <table className="mt-2 w-full text-xs">
@@ -1196,14 +1531,13 @@ function ArusKasTab() {
           ))}
           <div className="mt-3 flex items-center justify-between rounded-lg bg-[var(--color-canvas)] px-3 py-2 text-sm font-semibold">
             <span>Total Arus Kas Bersih</span>
-            <div className="flex items-center gap-3">
-              <AmountCell value={data.totalArusKas} />
-              <PercentCell value={data.totalArusKasPersen} />
-            </div>
+            <ValueCell mode={valueMode} amount={data.totalArusKas} percent={data.totalArusKasPersen} />
           </div>
-          <p className="mt-2 text-xs text-[var(--color-ink-soft)]">
-            % dihitung terhadap nilai absolut Arus Kas Operasi sebagai basis.
-          </p>
+          {valueMode === 'persen' && (
+            <p className="mt-2 text-xs text-[var(--color-ink-soft)]">
+              % dihitung terhadap nilai absolut Arus Kas Operasi sebagai basis.
+            </p>
+          )}
         </div>
       )}
       </>
