@@ -84,6 +84,24 @@ export async function fetchArusKas(params) {
   return data
 }
 
+// Breakdown berdampingan per outlet (Total <Cabang>, Rumah Produksi, Total
+// Outlet, lalu tiap outlet) — meniru format laporan manual akuntan. Balikan:
+// array per Cabang [{ cabangId, cabangName, kolom: [{ key, label, subCabangId, data }] }]
+export async function fetchNeracaPerOutlet(params) {
+  const { data } = await apiClient.get('/api/accounting/neraca-per-outlet', { params })
+  return data
+}
+
+export async function fetchLabaRugiPerOutlet(params) {
+  const { data } = await apiClient.get('/api/accounting/laba-rugi-per-outlet', { params })
+  return data
+}
+
+export async function fetchArusKasPerOutlet(params) {
+  const { data } = await apiClient.get('/api/accounting/arus-kas-per-outlet', { params })
+  return data
+}
+
 export async function fetchPeriodComparison(params) {
   const { data } = await apiClient.get('/api/accounting/period-comparison', { params })
   return data
