@@ -428,7 +428,7 @@ function UserTab({ currentUserId }) {
       const [u, r, l] = await Promise.all([fetchUsers(params), fetchRoles(), fetchAllLocations()])
       setUsers(u)
       setRoles(r)
-      setLocations(l)
+      setLocations(l.locations || [])
     } catch (err) {
       setError(errMsg(err, 'Gagal memuat daftar user.'))
     } finally {
