@@ -10,6 +10,7 @@ import StockRebalancingPage from './pages/StockRebalancingPage'
 import ReconciliationDashboardPage from './pages/ReconciliationDashboardPage'
 import MasterDataPage from './pages/MasterDataPage'
 import StokPenuhPage from './pages/StokPenuhPage'
+import StokHarianPage from './pages/StokHarianPage'
 import PurchasingPage from './pages/PurchasingPage'
 import ProduksiPage from './pages/ProduksiPage'
 import PayrollPage from './pages/PayrollPage'
@@ -114,6 +115,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW]}>
                 <StokPenuhPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/stok-harian"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW]}>
+                <StokHarianPage />
               </ProtectedRoute>
             }
           />

@@ -36,6 +36,7 @@ export default {
       pengeluaran: 'Expenses',
       proyeksiKas: 'Cash Projection',
       stokPenuh: 'Full Stock',
+      stokHarian: 'Daily Stock',
       marginLokasi: 'Location Margin',
       rekomendasiHarga: 'Price Recommendation',
       prediksiStok: 'Stock Prediction',

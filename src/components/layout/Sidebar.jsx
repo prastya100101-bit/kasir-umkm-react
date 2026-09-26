@@ -11,6 +11,7 @@ import {
   Wallet,
   LineChart,
   PackageCheck,
+  ClipboardList,
   Percent,
   Sparkles,
   BarChart3,
@@ -96,6 +97,19 @@ const NAV_ITEMS = [
     to: '/stok-penuh',
     labelKey: 'nav.items.stokPenuh',
     icon: PackageCheck,
+    roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW],
+    group: 'operasional',
+  },
+  // Stok Harian (tutup shift) / Permintaan Barang / Barang Datang / Stok
+  // Realtime / Laporan Masuk-Keluar — pelengkap Stok Penuh (tab "Stock
+  // Opname"), berdasarkan referensi Opname App Script. Backend
+  // dailyStockRoutes.js tidak ada gating requirePage/role khusus (cuma
+  // verifyToken+applyLocationScope), jadi role di sini dibuka sama luas
+  // dengan Stok Penuh supaya Kasir/Crew di lapangan bisa lapor tutup shift.
+  {
+    to: '/stok-harian',
+    labelKey: 'nav.items.stokHarian',
+    icon: ClipboardList,
     roles: [ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.SPV, ROLES.KASIR, ROLES.CREW],
     group: 'operasional',
   },
