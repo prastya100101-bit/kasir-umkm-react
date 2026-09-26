@@ -88,6 +88,13 @@ export default function PayslipPrintModal({ payroll, onClose }) {
             <Row label="Gaji Pokok" value={payroll.gajiPokok} />
             {Number(payroll.tunjangan) > 0 && <Row label="Tunjangan" value={payroll.tunjangan} />}
             {Number(payroll.bonus) > 0 && <Row label="Bonus" value={payroll.bonus} />}
+            {Number(payroll.bonusPenjualanHarian) !== 0 && (
+              <Row
+                label="Bonus Penjualan Harian"
+                value={Math.abs(Number(payroll.bonusPenjualanHarian))}
+                negative={Number(payroll.bonusPenjualanHarian) < 0}
+              />
+            )}
             {Number(payroll.potongan) > 0 && <Row label="Potongan" value={payroll.potongan} negative />}
             <div className="mt-2 flex items-center justify-between pt-1">
               <span className="font-bold text-gray-900">Total Diterima</span>

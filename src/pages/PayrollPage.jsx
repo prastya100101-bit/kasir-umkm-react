@@ -15,6 +15,8 @@ import {
   approvePayroll,
   markPayrollAsPaid,
   upsertCashierTarget,
+  fetchBonusPenjualanSettings,
+  saveBonusPenjualanSettings,
 } from '../api/payroll'
 import { formatRupiah } from '../utils/format'
 
@@ -74,6 +76,7 @@ const STATUS_FILTERS = [
 function GenerateForm({ karyawanOptions, periode, setPeriode, onGenerated }) {
   const [userId, setUserId] = useState('')
   const [tunjangan, setTunjangan] = useState('')
+  const [bonusPenjualanHarian, setBonusPenjualanHarian] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [info, setInfo] = useState(null)
@@ -85,7 +88,7 @@ function GenerateForm({ karyawanOptions, periode, setPeriode, onGenerated }) {
     setError(null)
     setInfo(null)
     try {
-      const payroll = await generatePayroll({ userId, periode, tunjangan })
+      const payroll = await generatePayroll({ userId, periode, tunjangan, bonusPenjualanHarian })
       setInfo(`Draft payroll periode ${periode} berhasil dibuat/diperbarui — total gaji ${formatRupiah(payroll.totalGaji)}.`)
       onGenerated()
     } catch (err) {
@@ -100,7 +103,7 @@ function GenerateForm({ karyawanOptions, periode, setPeriode, onGenerated }) {
       <h3 className="mb-3 font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-ink)]">
         Generate Payroll
       </h3>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <Field label="Karyawan">
           <select className={inputClass} value={userId} onChange={(e) => setUserId(e.target.value)} required>
             <option value="">Pilih karyawan…</option>
@@ -124,6 +127,15 @@ function GenerateForm({ karyawanOptions, periode, setPeriode, onGenerated }) {
             placeholder="0"
           />
         </Field>
+        <Field label="Bonus Penjualan Harian (opsional)" hint="Kosongkan untuk pakai hitungan otomatis dari shift.">
+          <input
+            type="number"
+            className={inputClass}
+            value={bonusPenjualanHarian}
+            onChange={(e) => setBonusPenjualanHarian(e.target.value)}
+            placeholder="otomatis"
+          />
+        </Field>
       </div>
       {error && <p className="mt-1 text-sm text-[var(--color-danger)]">{error}</p>}
       {info && <p className="mt-1 text-sm text-[var(--color-brand)]">{info}</p>}
@@ -136,7 +148,9 @@ function GenerateForm({ karyawanOptions, periode, setPeriode, onGenerated }) {
       </button>
       <p className="mt-2 text-xs text-[var(--color-ink-soft)]">
         Bonus &amp; potongan dihitung otomatis dari Target KPI Kasir vs penjualan aktual, dan dari hari alpa
-        (jadwal tanpa presensi &amp; tanpa cuti disetujui). Hanya bisa di-generate ulang selama status masih draft.
+        (jadwal tanpa presensi &amp; tanpa cuti disetujui). Bonus Penjualan Harian dihitung otomatis per shift
+        dari omset &amp; tim shift (atur angkanya di tab &quot;Pengaturan Bonus Penjualan&quot;). Hanya bisa
+        di-generate ulang selama status masih draft.
       </p>
     </form>
   )
@@ -149,6 +163,7 @@ function EditDraftForm({ payroll, onDone }) {
   const [tunjangan, setTunjangan] = useState(String(payroll.tunjangan ?? ''))
   const [bonus, setBonus] = useState(String(payroll.bonus ?? ''))
   const [potongan, setPotongan] = useState(String(payroll.potongan ?? ''))
+  const [bonusPenjualanHarian, setBonusPenjualanHarian] = useState(String(payroll.bonusPenjualanHarian ?? ''))
   const [catatan, setCatatan] = useState(payroll.catatan ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
@@ -158,7 +173,7 @@ function EditDraftForm({ payroll, onDone }) {
     setSubmitting(true)
     setError(null)
     try {
-      await updatePayroll(payroll.id, { tunjangan, bonus, potongan, catatan })
+      await updatePayroll(payroll.id, { tunjangan, bonus, potongan, bonusPenjualanHarian, catatan })
       onDone()
     } catch (err) {
       setError(errMsg(err, 'Gagal menyimpan perubahan.'))
@@ -169,9 +184,16 @@ function EditDraftForm({ payroll, onDone }) {
 
   return (
     <form onSubmit={handleSubmit} className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas)] p-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
         <input type="number" className={inputClass} placeholder="Tunjangan" value={tunjangan} onChange={(e) => setTunjangan(e.target.value)} />
         <input type="number" className={inputClass} placeholder="Bonus" value={bonus} onChange={(e) => setBonus(e.target.value)} />
+        <input
+          type="number"
+          className={inputClass}
+          placeholder="Bonus Penjualan Harian"
+          value={bonusPenjualanHarian}
+          onChange={(e) => setBonusPenjualanHarian(e.target.value)}
+        />
         <input type="number" className={inputClass} placeholder="Potongan" value={potongan} onChange={(e) => setPotongan(e.target.value)} />
       </div>
       <input className={`${inputClass} mt-2`} placeholder="Catatan" value={catatan} onChange={(e) => setCatatan(e.target.value)} />
@@ -254,6 +276,7 @@ function PayrollRow({ payroll, canGenerate, canApprove, cashAccounts, onChanged 
       <td className="px-5 py-3 text-[var(--color-ink-soft)]">{payroll.periode}</td>
       <td className="px-5 py-3 text-right figure">{formatRupiah(payroll.gajiPokok)}</td>
       <td className="px-5 py-3 text-right figure">{formatRupiah(payroll.bonus)}</td>
+      <td className="px-5 py-3 text-right figure">{formatRupiah(payroll.bonusPenjualanHarian)}</td>
       <td className="px-5 py-3 text-right figure">{formatRupiah(payroll.potongan)}</td>
       <td className="px-5 py-3 text-right figure font-semibold text-[var(--color-ink)]">{formatRupiah(payroll.totalGaji)}</td>
       <td className={`px-5 py-3 font-medium ${STATUS_TONE[payroll.approvalStatus] || ''}`}>
@@ -458,6 +481,105 @@ function CashierTargetForm({ karyawanOptions, periode, setPeriode }) {
 }
 
 // ============================================================
+// TAB PENGATURAN BONUS PENJUALAN HARIAN (BARU, 26 September 2026) — GLOBAL,
+// beda dari Target KPI Kasir di atas yang per-user/per-periode. Basis
+// hitung otomatis bonusPenjualanHarian saat generate (lihat
+// hitungBonusPenjualanBulan() di payrollController.js).
+// ============================================================
+function BonusPenjualanSettingsForm() {
+  const [minOmsetBersihHarian, setMinOmsetBersihHarian] = useState('')
+  const [persenBonusPenjualan, setPersenBonusPenjualan] = useState('')
+  const [tambahanTetapBonusPenjualan, setTambahanTetapBonusPenjualan] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+  const [info, setInfo] = useState(null)
+
+  useEffect(() => {
+    fetchBonusPenjualanSettings()
+      .then((s) => {
+        setMinOmsetBersihHarian(String(s.minOmsetBersihHarian ?? ''))
+        setPersenBonusPenjualan(String(s.persenBonusPenjualan ?? ''))
+        setTambahanTetapBonusPenjualan(String(s.tambahanTetapBonusPenjualan ?? ''))
+      })
+      .catch((err) => setError(errMsg(err, 'Gagal memuat pengaturan.')))
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+    setInfo(null)
+    try {
+      await saveBonusPenjualanSettings({ minOmsetBersihHarian, persenBonusPenjualan, tambahanTetapBonusPenjualan })
+      setInfo('Pengaturan Bonus Penjualan Harian berhasil disimpan.')
+    } catch (err) {
+      setError(errMsg(err, 'Gagal menyimpan pengaturan.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (isLoading) {
+    return <div className="h-32 animate-pulse rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card-elevated rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      <h3 className="mb-1 font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-ink)]">
+        Pengaturan Bonus Penjualan Harian
+      </h3>
+      <p className="mb-3 text-xs text-[var(--color-ink-soft)]">
+        Berlaku global untuk semua shift/karyawan. Bonus dihitung per shift dari omset shift itu (Sale.total),
+        dibagi rata ke semua anggota tim shift (kasir + crew via presensi), hanya jika omset shift memenuhi
+        minimal di bawah dikali jumlah anggota tim.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field label="Minimal Omset Bersih / Hari (Rp)" hint="Per anggota tim shift — dikali jumlah anggota.">
+          <input
+            type="number"
+            min="0"
+            className={inputClass}
+            value={minOmsetBersihHarian}
+            onChange={(e) => setMinOmsetBersihHarian(e.target.value)}
+          />
+        </Field>
+        <Field label="Persen Bonus (%)" hint="Dari omset bersih shift.">
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            className={inputClass}
+            value={persenBonusPenjualan}
+            onChange={(e) => setPersenBonusPenjualan(e.target.value)}
+          />
+        </Field>
+        <Field label="Tambahan Tetap / Shift (Rp)" hint="Ditambahkan flat ke tiap shift yang memenuhi syarat.">
+          <input
+            type="number"
+            min="0"
+            className={inputClass}
+            value={tambahanTetapBonusPenjualan}
+            onChange={(e) => setTambahanTetapBonusPenjualan(e.target.value)}
+          />
+        </Field>
+      </div>
+      {error && <p className="mt-2 text-sm text-[var(--color-danger)]">{error}</p>}
+      {info && <p className="mt-2 text-sm text-[var(--color-brand)]">{info}</p>}
+      <button
+        type="submit"
+        disabled={submitting}
+        className="mt-3 rounded-lg bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+      >
+        {submitting ? 'Menyimpan…' : 'Simpan Pengaturan'}
+      </button>
+    </form>
+  )
+}
+
+// ============================================================
 // HALAMAN
 // ============================================================
 export default function PayrollPage() {
@@ -517,11 +639,21 @@ export default function PayrollPage() {
             Target KPI Kasir
           </button>
         )}
+        {canGenerate && (
+          <button
+            onClick={() => setTab('bonus-penjualan')}
+            className={`rounded px-3 py-1 font-medium transition-colors ${tab === 'bonus-penjualan' ? 'bg-[var(--color-brand)] text-white' : 'text-[var(--color-ink-soft)] hover:bg-[var(--color-canvas)]'}`}
+          >
+            Pengaturan Bonus Penjualan
+          </button>
+        )}
       </div>
 
       {tab === 'target' && canGenerate && (
         <CashierTargetForm karyawanOptions={karyawan} periode={periode} setPeriode={setPeriode} />
       )}
+
+      {tab === 'bonus-penjualan' && canGenerate && <BonusPenjualanSettingsForm />}
 
       {tab === 'payroll' && (
         <>
@@ -577,6 +709,7 @@ export default function PayrollPage() {
                     <th className="px-5 py-3 font-medium">Periode</th>
                     <th className="px-5 py-3 text-right font-medium">Gaji Pokok</th>
                     <th className="px-5 py-3 text-right font-medium">Bonus</th>
+                    <th className="px-5 py-3 text-right font-medium">Bonus Penjualan</th>
                     <th className="px-5 py-3 text-right font-medium">Potongan</th>
                     <th className="px-5 py-3 text-right font-medium">Total</th>
                     <th className="px-5 py-3 font-medium">Status</th>

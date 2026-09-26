@@ -26,20 +26,28 @@ export async function fetchPayroll(id) {
   return data
 }
 
-export async function generatePayroll({ userId, periode, tunjangan }) {
+export async function generatePayroll({ userId, periode, tunjangan, bonusPenjualanHarian }) {
   const { data } = await apiClient.post('/api/payroll/generate', {
     userId,
     periode,
     tunjangan: tunjangan === undefined || tunjangan === '' ? undefined : Number(tunjangan),
+    // Opsional — kosongkan untuk pakai hitungan otomatis dari Sale/Attendance
+    // (lihat hitungBonusPenjualanBulan() di backend).
+    bonusPenjualanHarian:
+      bonusPenjualanHarian === undefined || bonusPenjualanHarian === ''
+        ? undefined
+        : Number(bonusPenjualanHarian),
   })
   return data
 }
 
-export async function updatePayroll(id, { tunjangan, bonus, potongan, catatan }) {
+export async function updatePayroll(id, { tunjangan, bonus, potongan, bonusPenjualanHarian, catatan }) {
   const payload = {}
   if (tunjangan !== undefined && tunjangan !== '') payload.tunjangan = Number(tunjangan)
   if (bonus !== undefined && bonus !== '') payload.bonus = Number(bonus)
   if (potongan !== undefined && potongan !== '') payload.potongan = Number(potongan)
+  if (bonusPenjualanHarian !== undefined && bonusPenjualanHarian !== '')
+    payload.bonusPenjualanHarian = Number(bonusPenjualanHarian)
   if (catatan !== undefined) payload.catatan = catatan
   const { data } = await apiClient.put(`/api/payroll/${id}`, payload)
   return data
@@ -117,5 +125,29 @@ export async function fetchMyPayroll({ periode } = {}) {
   const params = {}
   if (periode) params.periode = periode
   const { data } = await apiClient.get('/api/payroll/my-payroll', { params })
+  return data
+}
+
+// ============================================================
+// Pengaturan Bonus Penjualan Harian (BARU, 26 September 2026) — global,
+// bukan per-user/periode seperti CashierTargets. Gerbang page permission
+// SAMA dgn generate payroll ('payroll'), lihat payrollRoutes.js.
+// ============================================================
+
+export async function fetchBonusPenjualanSettings() {
+  const { data } = await apiClient.get('/api/payroll/bonus-penjualan-settings')
+  return data // { minOmsetBersihHarian, persenBonusPenjualan, tambahanTetapBonusPenjualan }
+}
+
+export async function saveBonusPenjualanSettings({
+  minOmsetBersihHarian,
+  persenBonusPenjualan,
+  tambahanTetapBonusPenjualan,
+}) {
+  const { data } = await apiClient.put('/api/payroll/bonus-penjualan-settings', {
+    minOmsetBersihHarian: Number(minOmsetBersihHarian || 0),
+    persenBonusPenjualan: Number(persenBonusPenjualan || 0),
+    tambahanTetapBonusPenjualan: Number(tambahanTetapBonusPenjualan || 0),
+  })
   return data
 }
