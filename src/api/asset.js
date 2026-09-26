@@ -23,6 +23,24 @@ export async function fetchAsset(id) {
   return data.asset
 }
 
+// Dashboard grafik per outlet & kategori (GET /api/aset/dashboard) — selalu
+// live, tidak ada mode snapshot bulan lampau.
+export async function fetchAssetDashboard() {
+  const { data } = await apiClient.get('/api/aset/dashboard')
+  return data
+}
+
+// Impor massal — controllers/assetController.js importAssets, Super Admin
+// saja di backend. Sama pola dengan importProducts (api/masterData.js):
+// backend menerima JSON { rows } yang SUDAH diparse di client (lihat
+// ImportAsetModal + utils/csv.js), bukan file mentah/multipart. Aset tidak
+// punya business key alami (beda dari produk yang punya SKU) jadi tiap
+// baris SELALU membuat aset baru, tidak ada mode update.
+export async function importAssets(rows) {
+  const { data } = await apiClient.post('/api/aset/import', { rows })
+  return data.importSummary
+}
+
 export async function createAsset(payload) {
   const { data } = await apiClient.post('/api/aset', payload)
   return data.asset
@@ -61,5 +79,39 @@ export async function runMonthlyDepreciation(periode) {
 //         tanggalPelepasan?, catatan?, cashAccountId? }
 export async function disposeAsset(id, payload) {
   const { data } = await apiClient.post(`/api/aset/${id}/lepas`, payload)
+  return data
+}
+
+// ============================================================
+// Riwayat Perawatan (Maintenance) — port dari ASSETMANAGEMENT.gs
+// (addMaintenance/updateMaintenance/deleteMaintenance/getMaintenanceByAsset),
+// belum ada sebelum ini. Catat perawatan: semua role yang login. Hapus:
+// Super Admin saja (backend yang menegakkan, sama pola dengan CRUD aset).
+// ============================================================
+
+export async function fetchAllMaintenance() {
+  const { data } = await apiClient.get('/api/aset/perawatan')
+  return data.maintenances
+}
+
+export async function fetchMaintenanceByAsset(assetId) {
+  const { data } = await apiClient.get(`/api/aset/${assetId}/perawatan`)
+  return data.maintenances
+}
+
+// body: { jenisMaintenance, tanggalMaintenance, jadwalBerikutnya?, biaya?,
+//         vendor?, status?, deskripsi?, catatan? }
+export async function createMaintenance(assetId, payload) {
+  const { data } = await apiClient.post(`/api/aset/${assetId}/perawatan`, payload)
+  return data.maintenance
+}
+
+export async function updateMaintenance(maintenanceId, payload) {
+  const { data } = await apiClient.put(`/api/aset/perawatan/${maintenanceId}`, payload)
+  return data.maintenance
+}
+
+export async function deleteMaintenance(maintenanceId) {
+  const { data } = await apiClient.delete(`/api/aset/perawatan/${maintenanceId}`)
   return data
 }
